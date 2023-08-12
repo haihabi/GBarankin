@@ -18,7 +18,7 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         self.k_target = k_target
         self.m_sensors = m_sensors
         init_sensors_locations = torch.randn([m_sensors, 2]) if sensors_locations is None else sensors_locations
-        self.sensor_location = nn.Parameter(torch.randn([m_sensors, 2]))
+        self.sensor_location = nn.Parameter(init_sensors_locations)
         self.s = 2 * np.pi / wavelength
         init_signal_covariance_matrix = torch.diag(torch.diagonal(torch.ones(
             [k_target, k_target]))) + 0 * 1j if signal_covariance_matrix is None else signal_covariance_matrix

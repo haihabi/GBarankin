@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 import constants
@@ -13,7 +15,7 @@ import generative_bound
 wavelength = 1.0  # normalized
 d0 = wavelength / 2
 m_sensors = 12
-k_targets = 8
+k_targets = 2
 
 # Create a 12-element ULA.
 ula = model.UniformLinearArray(m_sensors, d0)
@@ -29,7 +31,7 @@ n_snapshots = 200
 # We use root-MUSIC.
 estimator = estimation.RootMUSIC1D(wavelength)
 
-snrs = np.linspace(-20, 10, 20)
+snrs = np.linspace(-20, 10, 10)
 # 300 Monte Carlo runs for each SNR
 n_repeats = 300
 
@@ -48,9 +50,15 @@ for i, snr in enumerate(snrs):
     if locations.shape[1] == 1:
         locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
     doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
-                                     sensors_locations=locations.to(pru.get_working_device()).float())
+                                     sensors_locations=locations.to(pru.get_working_device()).float(),
+                                     signal_covariance_matrix=torch.diag(
+                                         torch.diag(torch.ones(k_targets, k_targets))).to(
+                                         pru.get_working_device()).float() * math.sqrt(0.5) + 0 * 1j,
+                                     noise_covariance_matrix=(power_noise * math.sqrt(0.5)) * torch.diag(
+                                         torch.diag(torch.ones(m_sensors, m_sensors))).to(
+                                         pru.get_working_device()).float() + 0 * 1j)
     doa_optimal_flow = doa_optimal_flow.to(pru.get_working_device())
-    gcrb = generative_bound.generative_cramer_rao_bound(doa_optimal_flow, 512000, parameter_name=constants.DOAS,
+    gcrb = generative_bound.generative_cramer_rao_bound(doa_optimal_flow, 128000, parameter_name=constants.DOAS,
                                                         doas=torch.tensor(sources).to(pru.get_working_device()).reshape(
                                                             [1, -1]).float())
 
@@ -60,6 +68,7 @@ for i, snr in enumerate(snrs):
     for r in range(n_repeats):
         # Stochastic signal model.
         A = ula.steering_matrix(sources, wavelength)
+
         S = source_signal.emit(n_snapshots)
         N = noise_signal.emit(n_snapshots)
         Y = A @ S + N
@@ -94,7 +103,7 @@ plt.xlabel('SNR (dB)')
 plt.ylabel(r'MSE / $\mathrm{rad}^2$')
 plt.grid(True)
 plt.legend(['MSE', 'Stochastic CRB', 'Deterministic CRB',
-            'Stochastic CRB (Uncorrelated)','Stochastic GCRB (Uncorrelated)'])
+            'Stochastic CRB (Uncorrelated)', 'Stochastic GCRB (Uncorrelated)'])
 plt.title('MSE vs. CRB')
 plt.margins(x=0)
 plt.show()
