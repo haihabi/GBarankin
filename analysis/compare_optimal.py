@@ -13,9 +13,9 @@ import pyresearchutils as pru
 import generative_bound
 
 wavelength = 1.0  # normalized
-d0 = wavelength / 2
-m_sensors = 12
-k_targets = 2
+d0 = wavelength
+m_sensors = 40
+k_targets = 1
 
 # Create a 12-element ULA.
 ula = model.UniformLinearArray(m_sensors, d0)
@@ -27,11 +27,11 @@ sources = model.FarField1DSourcePlacement(
 power_source = 1  # Normalized
 source_signal = model.ComplexStochasticSignal(sources.size, power_source)
 # 200 snapshots.
-n_snapshots = 200
+n_snapshots = 10
 # We use root-MUSIC.
 estimator = estimation.RootMUSIC1D(wavelength)
 
-snrs = np.linspace(-20, 10, 10)
+snrs = np.linspace(-30, 10, 10)
 # 300 Monte Carlo runs for each SNR
 n_repeats = 300
 
@@ -46,23 +46,23 @@ for i, snr in enumerate(snrs):
     noise_signal = model.ComplexStochasticSignal(ula.size, power_noise)
     # The squared errors and the deterministic CRB varies
     # for each run. We need to compute the average.
-    locations = torch.Tensor(ula._locations)
-    if locations.shape[1] == 1:
-        locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
-    doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
-                                     sensors_locations=locations.to(pru.get_working_device()).float(),
-                                     signal_covariance_matrix=torch.diag(
-                                         torch.diag(torch.ones(k_targets, k_targets))).to(
-                                         pru.get_working_device()).float() * math.sqrt(0.5) + 0 * 1j,
-                                     noise_covariance_matrix=(power_noise * math.sqrt(0.5)) * torch.diag(
-                                         torch.diag(torch.ones(m_sensors, m_sensors))).to(
-                                         pru.get_working_device()).float() + 0 * 1j)
-    doa_optimal_flow = doa_optimal_flow.to(pru.get_working_device())
-    gcrb = generative_bound.generative_cramer_rao_bound(doa_optimal_flow, 128000, parameter_name=constants.DOAS,
-                                                        doas=torch.tensor(sources).to(pru.get_working_device()).reshape(
-                                                            [1, -1]).float())
+    # locations = torch.Tensor(ula._locations)
+    # if locations.shape[1] == 1:
+    #     locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
+    # doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
+    #                                  sensors_locations=locations.to(pru.get_working_device()).float(),
+    #                                  signal_covariance_matrix=torch.diag(
+    #                                      torch.diag(torch.ones(k_targets, k_targets))).to(
+    #                                      pru.get_working_device()).float() * math.sqrt(0.5) + 0 * 1j,
+    #                                  noise_covariance_matrix=(power_noise * math.sqrt(0.5)) * torch.diag(
+    #                                      torch.diag(torch.ones(m_sensors, m_sensors))).to(
+    #                                      pru.get_working_device()).float() + 0 * 1j)
+    # doa_optimal_flow = doa_optimal_flow.to(pru.get_working_device())
+    # gcrb = generative_bound.generative_cramer_rao_bound(doa_optimal_flow, 512, parameter_name=constants.DOAS,
+    #                                                     doas=torch.tensor(sources).to(pru.get_working_device()).reshape(
+    #                                                         [1, -1]).float())
 
-    gcrbs_stouc[i] = torch.diag(gcrb).mean().item()
+    # gcrbs_stouc[i] = torch.diag(gcrb).mean().item()
     cur_mse = 0.0
     cur_crb_det = 0.0
     for r in range(n_repeats):
@@ -78,34 +78,38 @@ for i, snr in enumerate(snrs):
         # In practice, you should check if `resolved` is true.
         # We skip the check here.
         cur_mse += np.mean((estimates.locations - sources.locations) ** 2)
-        B_det = perf.ecov_music_1d(ula, sources, wavelength, Rs, power_noise,
-                                   n_snapshots)
-        cur_crb_det += np.mean(np.diag(B_det))
+        # B_det = perf.ecov_music_1d(ula, sources, wavelength, Rs, power_noise,
+        #                            n_snapshots)
+        # cur_crb_det += np.mean(np.diag(B_det))
     # Update the results.
-    B_sto, _ = perf.crb_sto_farfield_1d(ula, sources, wavelength, power_source,
-                                        power_noise, n_snapshots)
+    # B_sto, _ = perf.crb_sto_farfield_1d(ula, sources, wavelength, power_source,
+    #                                     power_noise, n_snapshots)
     B_stouc, _ = perf.crb_stouc_farfield_1d(ula, sources, wavelength, power_source,
                                             power_noise, n_snapshots)
     BB_stouc, _ = perf.barankin_stouc_farfield_1d(ula, sources, wavelength, power_source,
                                                   power_noise, n_snapshots)
-    mses[i] = cur_mse / n_repeats
-    crbs_sto[i] = np.mean(np.diag(B_sto))
-    crbs_det[i] = cur_crb_det / n_repeats
-    crbs_stouc[i] = np.mean(np.diag(B_stouc))
+    mses[i] = np.sqrt(cur_mse / n_repeats)
+    # crbs_sto[i] = np.mean(np.diag(B_sto))
+    # crbs_det[i] = cur_crb_det / n_repeats
+    crbs_stouc[i] = np.sqrt(np.mean(np.diag(B_stouc)))
+    gcrbs_stouc[i] = np.sqrt(np.mean(np.diag(BB_stouc)))
     print('Completed SNR = {0:.2f} dB'.format(snr))
 plt.figure(figsize=(8, 6))
 plt.semilogy(
     snrs, mses, '-x',
-    snrs, crbs_sto, '--',
-    snrs, crbs_det, '--',
+    # snrs, crbs_sto, '--',
+    # snrs, crbs_det, '--',
     snrs, crbs_stouc, '--',
-    snrs, gcrbs_stouc, '--'
+    snrs, gcrbs_stouc, '--x'
 )
 plt.xlabel('SNR (dB)')
-plt.ylabel(r'MSE / $\mathrm{rad}^2$')
+plt.ylabel(r'RMSE / $\mathrm{rad}$')
 plt.grid(True)
-plt.legend(['MSE', 'Stochastic CRB', 'Deterministic CRB',
-            'Stochastic CRB (Uncorrelated)', 'Stochastic GCRB (Uncorrelated)'])
+plt.legend(['MSE',
+            # 'Stochastic CRB',
+            # 'Deterministic CRB',
+            'Stochastic CRB (Uncorrelated)',
+            'Stochastic GCRB (Uncorrelated)'])
 plt.title('MSE vs. CRB')
 plt.margins(x=0)
 plt.show()
