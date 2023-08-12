@@ -86,6 +86,8 @@ for i, snr in enumerate(snrs):
                                         power_noise, n_snapshots)
     B_stouc, _ = perf.crb_stouc_farfield_1d(ula, sources, wavelength, power_source,
                                             power_noise, n_snapshots)
+    BB_stouc, _ = perf.barankin_stouc_farfield_1d(ula, sources, wavelength, power_source,
+                                                  power_noise, n_snapshots)
     mses[i] = cur_mse / n_repeats
     crbs_sto[i] = np.mean(np.diag(B_sto))
     crbs_det[i] = cur_crb_det / n_repeats
