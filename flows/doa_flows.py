@@ -1,13 +1,12 @@
 import torch
 from torch.distributions import MultivariateNormal
-from flows.base_iid_flow import IIDNormalizingFlowModel
 import normflowpy as nfp
 import pyresearchutils as pru
 
 from flows.layers.doa_layer import DOALayer
 
 
-class DOAFlow(IIDNormalizingFlowModel):
+class DOAFlow(nfp.NormalizingFlowModel):
     def __init__(self, n_snapshots, m_sensors, k_target, wavelength,
                  signal_covariance_matrix=None,
                  noise_covariance_matrix=None,

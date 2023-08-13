@@ -2,9 +2,10 @@ import torch
 import copy
 from torch.utils.data import DataLoader
 
+import constants
 from generative_bound import utils
-
-from torch import nn
+import pyresearchutils as pru
+from tqdm import tqdm
 
 
 def barankin_score_vector(in_flow_model, gamma, theta_test, parameter_name: str, **in_kwargs):
@@ -17,31 +18,51 @@ def barankin_score_vector(in_flow_model, gamma, theta_test, parameter_name: str,
         nll_test_point = in_flow_model.nll(gamma, **in_param_dict)
         nll_test_point_list.append(nll_test_point)
     nll_test_point_matrix = torch.stack(nll_test_point_list).transpose(-1, -2).unsqueeze(-1)
-    nll_base = nll_base.unsqueeze(-1).unsqueeze(-1)
-    delta_nll = nll_base - nll_test_point_matrix
-
-    return torch.minimum(torch.exp(delta_nll),
-                         torch.ones(1, device=gamma.device))
+    nll_base = nll_base.unsqueeze(-1).unsqueeze(-1).double()
+    _nll_test_point_matrix = nll_test_point_matrix + torch.permute(nll_test_point_matrix, [0, 2, 1])
+    delta_nll = 2 * nll_base - _nll_test_point_matrix
+    return torch.exp(delta_nll)
     # return torch.exp(delta_nll) - 1
 
 
-def barankin_transform_function(theta_base, theta_test, bb_info_inv):
-    tau_vector = theta_test - theta_base
-    return torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
+# def barankin_transform_function(theta_base, theta_test, bb_info_inv):
+#     tau_vector = theta_test - theta_base
+#     return torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
+
+def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, trimming_step=None,
+                               temperature: float = 1.0, eps=1e-12, parameter_name=constants.THETA,
+                               **kwargs):
+    with torch.no_grad():
+        sample_data = utils.generate_samples(in_flow_model, m, batch_size, trimming_step, temperature, **kwargs)
+        train_dataloader = DataLoader(sample_data, batch_size=batch_size, shuffle=False)
+
+        count = 0
+        bb_info = torch.zeros([test_points.shape[0], test_points.shape[0]], device=test_points.device)
+        for gamma in tqdm(train_dataloader):
+            gamma = gamma.to(pru.get_working_device())
+            _bb_info_i = barankin_score_vector(in_flow_model, gamma, test_points, parameter_name, **kwargs)
+
+            bb_info_i = _bb_info_i.sum(dim=0)
+            future = bb_info_i / (count + _bb_info_i.shape[0])
+            past = bb_info * (count / (count + _bb_info_i.shape[0]))
+            bb_info = future + past  # Average
+            count += _bb_info_i.shape[0]
+
+        bb_info_inv = torch.linalg.inv(bb_info - torch.ones_like(bb_info))
+        tau_vector = (test_points - kwargs[parameter_name]).double()
+    return bb_info_inv, tau_vector, bb_info
 
 
 def generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, trimming_step=None,
-                              temperature: float = 1.0, eps=1e-12,
+                              temperature: float = 1.0, eps=1e-12, parameter_name=constants.THETA,
                               **kwargs):
-    sample_data = utils.generate_samples(in_flow_model, m, batch_size, trimming_step, temperature, **kwargs)
-    train_dataloader = DataLoader(sample_data, batch_size=batch_size, shuffle=True)
-    eta_list = []
-    for gamma in train_dataloader:
-        gamma = gamma.float()
-        eta_i = barankin_score_vector(in_flow_model, gamma, test_points, "theta", **kwargs)
-        eta_list.append(eta_i)
-    eta = torch.cat(eta_list, dim=0)
-    bb_info = torch.matmul(eta, eta.transpose(-1, -2)).mean(dim=0)
-    bb_info_inv = torch.linalg.inv(bb_info + torch.diag(torch.ones(bb_info.shape[0]) * eps))
-    tau_vector = test_points - kwargs["theta"]
-    return torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
+    bb_info_inv, tau_vector, bb_info = _generative_barankin_bound(in_flow_model, m, test_points, batch_size,
+                                                                  trimming_step,
+                                                                  temperature, eps, parameter_name, **kwargs)
+    bound = torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
+    if torch.any(bound.diagonal() < 0).item():
+        bb_info_inv, tau_vector, bb_info = _generative_barankin_bound(in_flow_model, m, test_points, batch_size,
+                                                                      trimming_step,
+                                                                      temperature, eps, parameter_name, **kwargs)
+        bound = torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
+    return bound, bb_info
