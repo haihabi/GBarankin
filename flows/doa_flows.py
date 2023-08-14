@@ -10,7 +10,7 @@ class DOAFlow(nfp.NormalizingFlowModel):
     def __init__(self, n_snapshots, m_sensors, k_target, wavelength,
                  signal_covariance_matrix=None,
                  noise_covariance_matrix=None,
-                 sensors_locations=None):
+                 nominal_sensors_locations=None):
         dim = 2 * n_snapshots * m_sensors
         base_distribution = MultivariateNormal(torch.zeros(dim, device=pru.get_working_device()),
                                                torch.eye(dim,
@@ -18,9 +18,9 @@ class DOAFlow(nfp.NormalizingFlowModel):
         self.flows = [DOALayer(m_sensors,
                                k_target,
                                wavelength,
+                               nominal_sensors_locations,
                                signal_covariance_matrix=signal_covariance_matrix,
-                               noise_covariance_matrix=noise_covariance_matrix,
-                               sensors_locations=sensors_locations),
+                               noise_covariance_matrix=noise_covariance_matrix),
                       nfp.flows.ToComplex(),
                       nfp.flows.Tensor2Vector([n_snapshots, m_sensors, 2]),
 

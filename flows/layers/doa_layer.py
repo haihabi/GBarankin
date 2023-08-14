@@ -11,18 +11,20 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
                  m_sensors,
                  k_target,
                  wavelength,
+                 nominal_sensors_locations,
                  signal_covariance_matrix=None,
-                 noise_covariance_matrix=None,
-                 sensors_locations=None):
+                 noise_covariance_matrix=None):
         super().__init__()
         self.k_target = k_target
         self.m_sensors = m_sensors
-        init_sensors_locations = torch.randn([m_sensors, 2]) if sensors_locations is None else sensors_locations
-        self.sensor_location = nn.Parameter(init_sensors_locations)
+        # init_sensors_locations = torch.randn(
+        # [m_sensors, 2]) if nominal_sensors_locations is None else nominal_sensors_locations
+        self.sensor_location = nn.Parameter(nominal_sensors_locations,
+                                            requires_grad=False)
         self.s = 2 * np.pi / wavelength
-        init_signal_covariance_matrix = torch.diag(torch.diagonal(torch.ones(
+        init_signal_covariance_matrix = torch.diag(torch.diagonal(torch.rand(
             [k_target, k_target]))) + 0 * 1j if signal_covariance_matrix is None else signal_covariance_matrix
-        init_noise_covariance_matrix = torch.diag(torch.diagonal(torch.ones(
+        init_noise_covariance_matrix = torch.diag(torch.diagonal(torch.rand(
             [m_sensors, m_sensors]))) + 0 * 1j if noise_covariance_matrix is None else noise_covariance_matrix
         self.signal_covariance_matrix = nn.Parameter(init_signal_covariance_matrix)
         self.noise_covariance_matrix = nn.Parameter(init_noise_covariance_matrix)
@@ -49,7 +51,7 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         A = self.steering_matrix(locations)
         l_matrix = torch.linalg.cholesky(self.compute_r_matrix(A))
         l_matrix_inv = torch.linalg.inv(l_matrix)
-        return (l_matrix_inv.unsqueeze(dim=1) @ x.unsqueeze(dim=-1)).squeeze(dim=-1), torch.log(
+        return (l_matrix_inv.unsqueeze(dim=1) @ x.unsqueeze(dim=-1)).squeeze(dim=-1), x.shape[1] * torch.log(
             torch.abs(torch.linalg.det(l_matrix_inv)))
 
     def backward(self, z, **kwargs):
@@ -58,4 +60,5 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
             pru.logger.critical("Mismatch in number of targets")
         A = self.steering_matrix(locations)
         L = torch.linalg.cholesky(self.compute_r_matrix(A))
-        return (L.unsqueeze(dim=1) @ z.unsqueeze(dim=-1)).squeeze(dim=-1), torch.log(torch.abs(torch.linalg.det(L)))
+        return (L.unsqueeze(dim=1) @ z.unsqueeze(dim=-1)).squeeze(dim=-1), z.shape[1] * torch.log(
+            torch.abs(torch.linalg.det(L)))

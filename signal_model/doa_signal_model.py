@@ -35,5 +35,5 @@ class DOASignalModel:
             N = self.noise_signal.emit(self.n_snapshots)
             Y = A @ S + N
             labels_list.append(doas.astype("float32"))
-            data_list.append(Y.astype("complex64"))
+            data_list.append(Y.T.astype("complex64"))
         return pru.torch.NumpyDataset(data_list, labels_list, transform=transform)

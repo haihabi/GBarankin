@@ -62,9 +62,9 @@ for i, snr in enumerate(snrs):
     locations = torch.Tensor(ula._locations)
     if locations.shape[1] == 1:
         locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
-    n_samples2generate = 8*64000
+    n_samples2generate = 8 * 64000
     doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
-                                     sensors_locations=locations.to(pru.get_working_device()).float(),
+                                     nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
                                      signal_covariance_matrix=torch.diag(
                                          torch.diag(torch.ones(k_targets, k_targets))).to(
                                          pru.get_working_device()).float() + 0 * 1j,
@@ -133,10 +133,11 @@ plt.xlabel('SNR (dB)')
 plt.ylabel(r'RMSE / $\mathrm{rad}$')
 plt.grid(True)
 plt.legend(['MSE',
-            'GBarankin (Uncorrelated)',
-            'GCRB (Uncorrelated)',
-            'CRB (Uncorrelated)',
-            'Barankin (Uncorrelated)'])
+            'GBarankin',
+            'GCRB ',
+            'CRB ',
+            'Barankin'])
 plt.title('MSE vs. CRB')
 plt.margins(x=0)
+plt.savefig("compare_vs_snr.svg")
 plt.show()

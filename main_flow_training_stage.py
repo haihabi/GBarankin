@@ -6,6 +6,8 @@ import pyresearchutils as pru
 import constants as C
 import os
 from tqdm import tqdm
+import wandb
+import numpy as np
 
 
 def init_config() -> pru.ConfigReader:
@@ -16,7 +18,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("base_epochs", type=int, default=360)
     _cr.add_parameter('base_dataset_size', type=int, default=200000)
 
-    _cr.add_parameter("lr", type=float, default=2e-4)
+    _cr.add_parameter("lr", type=float, default=1e-4)
     _cr.add_parameter("weight_decay", type=float, default=0.0)
 
     # _cr.add_parameter("random_padding", type=str, default="false")
@@ -36,11 +38,11 @@ def init_config() -> pru.ConfigReader:
     # TODO:
     # 1. Add array type
     # 2.
-    _cr.add_parameter("m_sensors", type=int, default=8)
-    _cr.add_parameter("n_snapshots", type=int, default=2)
+    _cr.add_parameter("m_sensors", type=int, default=20)
+    _cr.add_parameter("n_snapshots", type=int, default=5)
     _cr.add_parameter("k_targets", type=int, default=1)
-    _cr.add_parameter("in_snr", type=float, default=0.1)
-    _cr.add_parameter("wavelength", type=float, default=0.1)
+    _cr.add_parameter("in_snr", type=float, default=0)
+    _cr.add_parameter("wavelength", type=float, default=1)
 
     ###############################################
     # Dataset Parameters
@@ -71,19 +73,56 @@ def main():
 
     validation_data_loader = torch.utils.data.DataLoader(validation_dataset, batch_size=run_parameters.batch_size,
                                                          shuffle=False)
+    is_sensor_location_known = True
+
+    nominal_locations = torch.Tensor(sm.array._locations)
+    if nominal_locations.shape[1] == 1:
+        nominal_locations = torch.cat([nominal_locations, torch.zeros_like(nominal_locations)], dim=-1)
+
     flow = flows.DOAFlow(run_parameters.n_snapshots, run_parameters.m_sensors, run_parameters.k_targets,
-                         run_parameters.wavelength)
+                         run_parameters.wavelength,
+                         nominal_sensors_locations=nominal_locations if is_sensor_location_known else None)
+    flow.to(pru.get_working_device())
+
     opt = torch.optim.Adam(flow.parameters(), lr=run_parameters.lr, weight_decay=run_parameters.weight_decay)
     n_epochs = run_parameters.base_epochs  # TODO:Update computation
     ma = pru.MetricAveraging()
+    target_signal_covariance_matrix = torch.diag(
+        torch.diag(torch.ones(run_parameters.k_targets, run_parameters.k_targets))).to(
+        pru.get_working_device()).float() + 0 * 1j
+    target_noise_covariance_matrix = sm.power_noise * torch.diag(
+        torch.diag(torch.ones(run_parameters.m_sensors, run_parameters.m_sensors))).to(
+        pru.get_working_device()).float() + 0 * 1j
+
     for epoch in range(n_epochs):
+        ma.clear()
+        l_re = torch.linalg.norm(
+            flow.flows[0].sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
+            nominal_locations.to(pru.get_working_device()))
+        scv_re = torch.linalg.norm(
+            flow.flows[0].signal_covariance_matrix - target_signal_covariance_matrix) / torch.linalg.norm(
+            target_signal_covariance_matrix)
+
+        ncv_re = torch.linalg.norm(
+            flow.flows[0].noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
+            target_noise_covariance_matrix)
         for x, theta in tqdm(training_data_loader):
+            x, theta = pru.torch.update_device(x, theta)
             opt.zero_grad()
             loss = flow.nll_mean(x, doas=theta)
-            loss.baclward()
+            loss.backward()
             opt.step()
             ma.log(loss=loss.item())
 
+        wandb.log({**ma.result,
+                   "l_re": l_re.item(),
+                   "scv_re": scv_re.item(),
+                   'ncv_re': ncv_re.item(),
+                   "diag_mean": np.real(flow.flows[0].noise_covariance_matrix.diag().mean().item())})
+
+        torch.save(flow.state_dict(), os.path.join(run_log_folder,"model.pth"))
+        artifact = wandb.Artifact('model', type='model')
+        artifact.add_file(os.path.join(run_log_folder,"model.pth"))
         # TODO: Add validation
         # TODO:Add save model
 
