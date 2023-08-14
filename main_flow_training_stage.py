@@ -27,7 +27,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    # _cr.add_parameter("n_blocks", type=int, default=1)
+    _cr.add_parameter("n_flow_layer", type=int, default=2)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")
@@ -44,7 +44,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("k_targets", type=int, default=1)
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
-
+    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
     ###############################################
     # Dataset Parameters
     ###############################################
@@ -83,7 +83,8 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
 
     flow = flows.DOAFlow(in_run_parameters.n_snapshots, in_run_parameters.m_sensors, in_run_parameters.k_targets,
                          in_run_parameters.wavelength,
-                         nominal_sensors_locations=nominal_locations if is_sensor_location_known else None)
+                         nominal_sensors_locations=nominal_locations if is_sensor_location_known else None,
+                         n_flow_layer=_run_parameters.n_flow_layer)
     flow.to(pru.get_working_device())
 
     opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
@@ -99,14 +100,14 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     for epoch in tqdm(range(n_epochs)):
         ma.clear()
         l_re = torch.linalg.norm(
-            flow.flows[2].sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
+            flow.find_doa_layer().sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
             nominal_locations.to(pru.get_working_device()))
         scv_re = torch.linalg.norm(
-            flow.flows[2].signal_covariance_matrix - target_signal_covariance_matrix) / torch.linalg.norm(
+            flow.find_doa_layer().signal_covariance_matrix - target_signal_covariance_matrix) / torch.linalg.norm(
             target_signal_covariance_matrix)
 
         ncv_re = torch.linalg.norm(
-            flow.flows[2].noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
+            flow.find_doa_layer().noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
             target_noise_covariance_matrix)
         for x, theta in training_data_loader:
             x, theta = pru.torch.update_device(x, theta)
@@ -115,20 +116,22 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             loss.backward()
             opt.step()
             ma.log(loss=loss.item())
+        with torch.no_grad():
+            for x, theta in validation_data_loader:
+                x, theta = pru.torch.update_device(x, theta)
+                val_loss = flow.nll_mean(x, doas=theta)
+                ma.log(val_loss=val_loss.item())
 
         wandb.log({**ma.result,
                    "l_re": l_re.item(),
                    "scv_re": scv_re.item(),
-                   'ncv_re': ncv_re.item(),
-                   "diag_mean": np.real(flow.flows[2].noise_covariance_matrix.diag().mean().item())})
+                   'ncv_re': ncv_re.item()})
 
         torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{in_snr}.pth"))
-        # TODO: Add validation
-        # TODO:Add save model
 
 
 if __name__ == '__main__':
     cr = init_config()
     _run_parameters, _run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=True)
-    # for snr in constants.SNR_POINTS:
-    train_model(_run_parameters, _run_log_folder, 10)
+    for snr in constants.SNR_POINTS:
+        train_model(_run_parameters, _run_log_folder, snr)

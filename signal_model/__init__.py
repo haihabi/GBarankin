@@ -1,1 +1,1 @@
-from signal_model.doa_signal_model import DOASignalModel
+from signal_model.doa_signal_model import DOASignalModel, SignalType
