@@ -32,7 +32,10 @@ n_snapshots = 10
 # We use root-MUSIC.
 estimator = estimation.RootMUSIC1D(wavelength)
 
-snrs = np.linspace(-30, 10, 15)
+# snrs = np.linspace(-30, 10, 15)
+# print(np.round(snrs))
+snrs = constants.SNR_POINTS
+# print("a")
 # snrs = [-12.5]
 # 300 Monte Carlo runs for each SNR
 n_repeats = 300
@@ -62,7 +65,7 @@ for i, snr in enumerate(snrs):
     locations = torch.Tensor(ula._locations)
     if locations.shape[1] == 1:
         locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
-    n_samples2generate = 8 * 64000
+    n_samples2generate = 64000
     doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
                                      nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
                                      signal_covariance_matrix=torch.diag(

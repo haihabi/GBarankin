@@ -1,5 +1,6 @@
 import torch.utils.data
 
+import constants
 import signal_model
 import flows
 import pyresearchutils as pru
@@ -56,22 +57,23 @@ def init_config() -> pru.ConfigReader:
     return _cr
 
 
-def main():
-    cr = init_config()
-    run_parameters, run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=True)
-    print("Starting Training Stage")
-    sm = signal_model.DOASignalModel(run_parameters.m_sensors,
-                                     run_parameters.n_snapshots,
-                                     run_parameters.k_targets,
-                                     run_parameters.in_snr, wavelength=run_parameters.wavelength)
+def train_model(in_run_parameters, in_run_log_folder, in_snr):
+    print(f"Starting Training Stage At SNR:{in_snr}")
+    sm = signal_model.DOASignalModel(in_run_parameters.m_sensors,
+                                     in_run_parameters.n_snapshots,
+                                     in_run_parameters.k_targets,
+                                     in_snr,
+                                     wavelength=in_run_parameters.wavelength)
 
-    training_dataset = sm.generate_dataset(run_parameters.dataset_size)
-    validation_dataset = sm.generate_dataset(run_parameters.val_dataset_size)
+    training_dataset = sm.generate_dataset(in_run_parameters.dataset_size)
+    validation_dataset = sm.generate_dataset(in_run_parameters.val_dataset_size)
 
-    training_data_loader = torch.utils.data.DataLoader(training_dataset, batch_size=run_parameters.batch_size,
+    training_data_loader = torch.utils.data.DataLoader(training_dataset,
+                                                       batch_size=in_run_parameters.batch_size,
                                                        shuffle=True)
 
-    validation_data_loader = torch.utils.data.DataLoader(validation_dataset, batch_size=run_parameters.batch_size,
+    validation_data_loader = torch.utils.data.DataLoader(validation_dataset,
+                                                         batch_size=in_run_parameters.batch_size,
                                                          shuffle=False)
     is_sensor_location_known = True
 
@@ -79,22 +81,22 @@ def main():
     if nominal_locations.shape[1] == 1:
         nominal_locations = torch.cat([nominal_locations, torch.zeros_like(nominal_locations)], dim=-1)
 
-    flow = flows.DOAFlow(run_parameters.n_snapshots, run_parameters.m_sensors, run_parameters.k_targets,
-                         run_parameters.wavelength,
+    flow = flows.DOAFlow(in_run_parameters.n_snapshots, in_run_parameters.m_sensors, in_run_parameters.k_targets,
+                         in_run_parameters.wavelength,
                          nominal_sensors_locations=nominal_locations if is_sensor_location_known else None)
     flow.to(pru.get_working_device())
 
-    opt = torch.optim.Adam(flow.parameters(), lr=run_parameters.lr, weight_decay=run_parameters.weight_decay)
-    n_epochs = run_parameters.base_epochs  # TODO:Update computation
+    opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
+    n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
     ma = pru.MetricAveraging()
     target_signal_covariance_matrix = torch.diag(
-        torch.diag(torch.ones(run_parameters.k_targets, run_parameters.k_targets))).to(
+        torch.diag(torch.ones(in_run_parameters.k_targets, in_run_parameters.k_targets))).to(
         pru.get_working_device()).float() + 0 * 1j
     target_noise_covariance_matrix = sm.power_noise * torch.diag(
-        torch.diag(torch.ones(run_parameters.m_sensors, run_parameters.m_sensors))).to(
+        torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
         pru.get_working_device()).float() + 0 * 1j
 
-    for epoch in range(n_epochs):
+    for epoch in tqdm(range(n_epochs)):
         ma.clear()
         l_re = torch.linalg.norm(
             flow.flows[0].sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
@@ -106,7 +108,7 @@ def main():
         ncv_re = torch.linalg.norm(
             flow.flows[0].noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
             target_noise_covariance_matrix)
-        for x, theta in tqdm(training_data_loader):
+        for x, theta in training_data_loader:
             x, theta = pru.torch.update_device(x, theta)
             opt.zero_grad()
             loss = flow.nll_mean(x, doas=theta)
@@ -120,12 +122,13 @@ def main():
                    'ncv_re': ncv_re.item(),
                    "diag_mean": np.real(flow.flows[0].noise_covariance_matrix.diag().mean().item())})
 
-        torch.save(flow.state_dict(), os.path.join(run_log_folder,"model.pth"))
-        artifact = wandb.Artifact('model', type='model')
-        artifact.add_file(os.path.join(run_log_folder,"model.pth"))
+        torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{snr}.pth"))
         # TODO: Add validation
         # TODO:Add save model
 
 
 if __name__ == '__main__':
-    main()
+    cr = init_config()
+    _run_parameters, _run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=True)
+    for snr in constants.SNR_POINTS:
+        train_model(_run_parameters, _run_log_folder, snr)
