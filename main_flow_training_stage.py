@@ -99,14 +99,14 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     for epoch in tqdm(range(n_epochs)):
         ma.clear()
         l_re = torch.linalg.norm(
-            flow.flows[0].sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
+            flow.flows[2].sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
             nominal_locations.to(pru.get_working_device()))
         scv_re = torch.linalg.norm(
-            flow.flows[0].signal_covariance_matrix - target_signal_covariance_matrix) / torch.linalg.norm(
+            flow.flows[2].signal_covariance_matrix - target_signal_covariance_matrix) / torch.linalg.norm(
             target_signal_covariance_matrix)
 
         ncv_re = torch.linalg.norm(
-            flow.flows[0].noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
+            flow.flows[2].noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
             target_noise_covariance_matrix)
         for x, theta in training_data_loader:
             x, theta = pru.torch.update_device(x, theta)
@@ -120,9 +120,9 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                    "l_re": l_re.item(),
                    "scv_re": scv_re.item(),
                    'ncv_re': ncv_re.item(),
-                   "diag_mean": np.real(flow.flows[0].noise_covariance_matrix.diag().mean().item())})
+                   "diag_mean": np.real(flow.flows[2].noise_covariance_matrix.diag().mean().item())})
 
-        torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{snr}.pth"))
+        torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{in_snr}.pth"))
         # TODO: Add validation
         # TODO:Add save model
 
@@ -130,5 +130,5 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
 if __name__ == '__main__':
     cr = init_config()
     _run_parameters, _run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=True)
-    for snr in constants.SNR_POINTS:
-        train_model(_run_parameters, _run_log_folder, snr)
+    # for snr in constants.SNR_POINTS:
+    train_model(_run_parameters, _run_log_folder, 10)

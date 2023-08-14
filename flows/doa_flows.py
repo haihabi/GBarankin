@@ -10,21 +10,27 @@ class DOAFlow(nfp.NormalizingFlowModel):
     def __init__(self, n_snapshots, m_sensors, k_target, wavelength,
                  signal_covariance_matrix=None,
                  noise_covariance_matrix=None,
-                 nominal_sensors_locations=None):
+                 nominal_sensors_locations=None,
+                 n_flow_layer=0):
         dim = 2 * n_snapshots * m_sensors
         base_distribution = MultivariateNormal(torch.zeros(dim, device=pru.get_working_device()),
                                                torch.eye(dim,
                                                          device=pru.get_working_device()))  # generate a class for base distribution
-        self.flows = [DOALayer(m_sensors,
-                               k_target,
-                               wavelength,
-                               nominal_sensors_locations,
-                               signal_covariance_matrix=signal_covariance_matrix,
-                               noise_covariance_matrix=noise_covariance_matrix),
-                      nfp.flows.ToComplex(),
-                      nfp.flows.Tensor2Vector([n_snapshots, m_sensors, 2]),
 
-                      ]
+        self.flows = [nfp.flows.ToReal()]
+
+        self.flows.extend([nfp.flows.ToComplex(),
+                           DOALayer(m_sensors,
+                                    k_target,
+                                    wavelength,
+                                    nominal_sensors_locations,
+                                    signal_covariance_matrix=signal_covariance_matrix,
+                                    noise_covariance_matrix=noise_covariance_matrix),
+                           nfp.flows.ToReal(),
+                           nfp.flows.Tensor2Vector([n_snapshots, m_sensors, 2]),
+
+                           ])
+
         super().__init__(base_distribution, self.flows, is_complex=True)
 
     def steering_matrix(self, locations):
