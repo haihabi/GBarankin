@@ -27,7 +27,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    _cr.add_parameter("n_flow_layer", type=int, default=2)
+    _cr.add_parameter("n_flow_layer", type=int, default=0)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")
@@ -45,7 +45,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
-    _cr.add_parameter("signal_type", type=str, default="QAM4", enum=signal_model.SignalType)
+    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
     ###############################################
     # Dataset Parameters
     ###############################################
@@ -92,6 +92,8 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     flow = build_flow_model(_run_parameters, sm)
     opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
     n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
+    if in_snr < 0:
+        n_epochs = 2 * n_epochs
     ma = pru.MetricAveraging()
     target_signal_covariance_matrix = torch.diag(
         torch.diag(torch.ones(in_run_parameters.k_targets, in_run_parameters.k_targets))).to(
@@ -102,9 +104,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
 
     for epoch in tqdm(range(n_epochs)):
         ma.clear()
-        l_re = torch.linalg.norm(
-            flow.find_doa_layer().sensor_location - nominal_locations.to(pru.get_working_device())) / torch.linalg.norm(
-            nominal_locations.to(pru.get_working_device()))
+
         scv_re = torch.linalg.norm(
             flow.find_doa_layer().signal_covariance_matrix - target_signal_covariance_matrix) / torch.linalg.norm(
             target_signal_covariance_matrix)
@@ -126,7 +126,6 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                 ma.log(val_loss=val_loss.item())
 
         wandb.log({**ma.result,
-                   "l_re": l_re.item(),
                    "scv_re": scv_re.item(),
                    'ncv_re': ncv_re.item()})
 

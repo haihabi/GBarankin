@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
+from tqdm import tqdm
 
 
 class SamplesDataset(Dataset):
@@ -40,11 +41,16 @@ def sample_function(in_flow_model, in_batch_size=128, trimming_step=None,
 def generate_samples(in_flow_model, m, batch_size=128, trimming_step=None,
                      temperature: float = 1.0, **kwargs):
     sample_count = 0
+    number_of_trys = 0
     sd = SamplesDataset()
-    with torch.no_grad():
-        while sample_count < m:
-            gamma = sample_function(in_flow_model, batch_size, trimming_step, temperature, **kwargs)
-            sample_count += gamma.shape[0]
-            sd.append_items(gamma.cpu().detach().numpy())
+    with tqdm() as t:
+        with torch.no_grad():
+            while sample_count < m:
+                gamma = sample_function(in_flow_model, batch_size, trimming_step, temperature, **kwargs)
+                sample_count += gamma.shape[0]
+                number_of_trys += batch_size
+                sd.append_items(gamma.cpu().detach().numpy())
+                t.set_postfix(sample_count=sample_count, number_of_trys=number_of_trys)
+                t.update(1)
     sd.finished()
     return sd
