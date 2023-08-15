@@ -44,7 +44,8 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("k_targets", type=int, default=1)
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
-    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
+    _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
+    _cr.add_parameter("signal_type", type=str, default="QAM4", enum=signal_model.SignalType)
     ###############################################
     # Dataset Parameters
     ###############################################
@@ -55,6 +56,19 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter('force_data_generation', type=str, default="false")
 
     return _cr
+
+
+def build_flow_model(in_run_parameters, in_sm):
+    nominal_locations = torch.Tensor(in_sm.array._locations)
+    if nominal_locations.shape[1] == 1:
+        nominal_locations = torch.cat([nominal_locations, torch.zeros_like(nominal_locations)], dim=-1)
+
+    flow = flows.DOAFlow(in_run_parameters.n_snapshots, in_run_parameters.m_sensors, in_run_parameters.k_targets,
+                         in_run_parameters.wavelength,
+                         nominal_sensors_locations=nominal_locations if in_run_parameters.is_sensor_location_known else None,
+                         n_flow_layer=in_run_parameters.n_flow_layer)
+    flow.to(pru.get_working_device())
+    return flow
 
 
 def train_model(in_run_parameters, in_run_log_folder, in_snr):
@@ -75,18 +89,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     validation_data_loader = torch.utils.data.DataLoader(validation_dataset,
                                                          batch_size=in_run_parameters.batch_size,
                                                          shuffle=False)
-    is_sensor_location_known = True
-
-    nominal_locations = torch.Tensor(sm.array._locations)
-    if nominal_locations.shape[1] == 1:
-        nominal_locations = torch.cat([nominal_locations, torch.zeros_like(nominal_locations)], dim=-1)
-
-    flow = flows.DOAFlow(in_run_parameters.n_snapshots, in_run_parameters.m_sensors, in_run_parameters.k_targets,
-                         in_run_parameters.wavelength,
-                         nominal_sensors_locations=nominal_locations if is_sensor_location_known else None,
-                         n_flow_layer=_run_parameters.n_flow_layer)
-    flow.to(pru.get_working_device())
-
+    flow = build_flow_model(_run_parameters, sm)
     opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
     n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
     ma = pru.MetricAveraging()

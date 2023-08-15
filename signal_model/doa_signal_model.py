@@ -1,11 +1,12 @@
 import numpy.random
-
+import torch
 import doatools.model as model
 import doatools.estimation as estimation
 import doatools.performance as perf
 import numpy as np
 import pyresearchutils as pru
 from enum import Enum
+import flows
 
 from doatools.model.signals import SignalGenerator
 
@@ -42,8 +43,10 @@ class DOASignalModel:
         self.d0 = wavelength / 2
         self.wavelength = wavelength
         self.n_snapshots = n_snapshots
+        self.m_sensors = m_sensors
         self.power_noise = DOASignalModel.POWER_SOURCE / (10 ** (in_snr / 10))
         self.array = model.UniformLinearArray(m_sensors, self.d0)
+        self.signal_type = signal_type
         if signal_type == SignalType.ComplexGaussian:
             self.source_signal = model.ComplexStochasticSignal(k_targets, DOASignalModel.POWER_SOURCE)
         elif signal_type == SignalType.QAM4:
@@ -53,8 +56,35 @@ class DOASignalModel:
         self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.power_noise)
         self.k_targets = k_targets
 
+    def compute_reference_bound(self, in_theta):
+        sources = model.FarField1DSourcePlacement(
+            [in_theta]
+
+        )
+        crb, _ = perf.crb_stouc_farfield_1d(self.array, sources, self.wavelength, DOASignalModel.POWER_SOURCE,
+                                            self.power_noise, self.n_snapshots)
+        bb_bound, bb_matrix, test_points = perf.barankin_stouc_farfield_1d(self.array, sources, self.wavelength,
+                                                                           DOASignalModel.POWER_SOURCE,
+                                                                           self.power_noise, self.n_snapshots)
+        return crb, bb_bound, bb_matrix, test_points
+
     def get_optimal_flow_model(self):
-        raise NotImplemented
+        if self.signal_type != SignalType.ComplexGaussian:
+            return None
+        locations = torch.Tensor(self.array._locations)
+        if locations.shape[1] == 1:
+            locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
+
+        doa_optimal_flow = flows.DOAFlow(self.n_snapshots, self.m_sensors, self.k_targets, self.wavelength,
+                                         nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
+                                         signal_covariance_matrix=torch.diag(
+                                             torch.diag(torch.ones(self.k_targets, self.k_targets))).to(
+                                             pru.get_working_device()).float() + 0 * 1j,
+                                         noise_covariance_matrix=self.power_noise * torch.diag(
+                                             torch.diag(torch.ones(self.m_sensors, self.m_sensors))).to(
+                                             pru.get_working_device()).float() + 0 * 1j,
+                                         n_flow_layer=0)
+        return doa_optimal_flow.to(pru.get_working_device())
 
     def generate_dataset(self, number_of_samples, transform=None):
         labels_list = []

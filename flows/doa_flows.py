@@ -10,11 +10,14 @@ from torch import nn
 
 
 def add_flow_step(flows, n_flow_layers, input_vector_shape,
+                  in_n_snapshots,
+                  in_m_sensors,
                   n_layer_inject=2,
                   n_hidden_inject=128,
                   inject_scale=False,
                   inject_bias=False,
                   affine_coupling=False,
+                  complex_affine_coupling=True,
                   affine_inject=False):
     for b in range(n_flow_layers):
         flows.append(
@@ -38,6 +41,16 @@ def add_flow_step(flows, n_flow_layers, input_vector_shape,
                                                                                              bias=inject_bias),
                                                   nh=n_hidden_inject, scale=False))
 
+        if complex_affine_coupling:
+            flows.append(nfp.flows.Vector2Tensor([in_n_snapshots, in_m_sensors, 2]))
+            flows.append(nfp.flows.AffineCoupling(x_shape=[in_n_snapshots, in_m_sensors, 2],
+                                                  parity=b % 2,
+                                                  net_class=nfp.base_nets.generate_mlp_class(n_layer=n_layer_inject,
+                                                                                             non_linear_function=nn.SiLU,
+                                                                                             bias=inject_bias),
+                                                  nh=n_hidden_inject, scale=True))
+            flows.append(nfp.flows.Tensor2Vector([in_n_snapshots, in_m_sensors, 2]))
+
 
 class DOAFlow(nfp.NormalizingFlowModel):
     def __init__(self, n_snapshots, m_sensors, k_target, wavelength,
@@ -52,7 +65,7 @@ class DOAFlow(nfp.NormalizingFlowModel):
 
         self.flows = [nfp.flows.ToReal(),
                       nfp.flows.Tensor2Vector([n_snapshots, m_sensors, 2])]
-        add_flow_step(self.flows, n_flow_layer, [n_snapshots * m_sensors * 2])
+        add_flow_step(self.flows, n_flow_layer, [n_snapshots * m_sensors * 2], n_snapshots, m_sensors)
         self.flows.extend([
             nfp.flows.Vector2Tensor([n_snapshots, m_sensors, 2]),
             nfp.flows.ToComplex(),
@@ -66,7 +79,7 @@ class DOAFlow(nfp.NormalizingFlowModel):
             nfp.flows.Tensor2Vector([n_snapshots, m_sensors, 2]),
 
         ])
-        add_flow_step(self.flows, n_flow_layer, [n_snapshots * m_sensors * 2])
+        add_flow_step(self.flows, n_flow_layer, [n_snapshots * m_sensors * 2], n_snapshots, m_sensors)
 
         super().__init__(base_distribution, self.flows, is_complex=True)
 
