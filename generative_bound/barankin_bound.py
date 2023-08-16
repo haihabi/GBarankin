@@ -8,7 +8,7 @@ import pyresearchutils as pru
 from tqdm import tqdm
 
 
-def barankin_score_vector(in_flow_model, gamma, theta_test, parameter_name: str, **in_kwargs):
+def barankin_matrix(in_flow_model, gamma, theta_test, parameter_name: str, search=False, **in_kwargs):
     in_param_dict = copy.copy(in_kwargs)
     nll_base = in_flow_model.nll(gamma, **in_param_dict)
     nll_test_point_list = []
@@ -19,15 +19,21 @@ def barankin_score_vector(in_flow_model, gamma, theta_test, parameter_name: str,
         nll_test_point_list.append(nll_test_point)
     nll_test_point_matrix = torch.stack(nll_test_point_list).transpose(-1, -2).unsqueeze(-1)
     nll_base = nll_base.unsqueeze(-1).unsqueeze(-1).double()
-    _nll_test_point_matrix = nll_test_point_matrix + torch.permute(nll_test_point_matrix, [0, 2, 1])
-    delta_nll = 2 * nll_base - _nll_test_point_matrix
+    if search:
+        delta_nll = 2 * (nll_base - nll_test_point_matrix)
+    else:
+        _nll_test_point_matrix = nll_test_point_matrix + torch.permute(nll_test_point_matrix, [0, 2, 1])
+        delta_nll = 2 * nll_base - _nll_test_point_matrix
     return torch.exp(delta_nll)
+    # nll_test_point_matrix = torch.stack(nll_test_point_list).transpose(-1, -2).unsqueeze(-1)
+    # nll_base = nll_base.unsqueeze(-1).unsqueeze(-1).double()
     # return torch.exp(delta_nll) - 1
 
 
-# def barankin_transform_function(theta_base, theta_test, bb_info_inv):
-#     tau_vector = theta_test - theta_base
-#     return torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
+def search_test_points(in_flow_model, gamma, **in_kwargs):
+    in_param_dict = copy.copy(in_kwargs)
+    nll_base = in_flow_model.nll(gamma, **in_param_dict)
+
 
 def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, trimming_step=None,
                                temperature: float = 1.0, eps=1e-12, parameter_name=constants.THETA,
@@ -40,7 +46,7 @@ def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, tr
         bb_info = torch.zeros([test_points.shape[0], test_points.shape[0]], device=test_points.device)
         for gamma in tqdm(train_dataloader):
             gamma = gamma.to(pru.get_working_device())
-            _bb_info_i = barankin_score_vector(in_flow_model, gamma, test_points, parameter_name, **kwargs)
+            _bb_info_i = barankin_matrix(in_flow_model, gamma, test_points, parameter_name, **kwargs)
 
             bb_info_i = _bb_info_i.sum(dim=0)
             future = bb_info_i / (count + _bb_info_i.shape[0])

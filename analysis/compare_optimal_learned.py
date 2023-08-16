@@ -22,11 +22,12 @@ def rmse_db(x):
 def main():
     pru.set_seed(0)
     cr = init_config()
-    run_name = "dark-shadow-71"
+    run_name = "balmy-plasma-90"
+    run_name = "clear-sun-96"
     user_name = "HVH"
     run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
     theta_value = np.pi / 10
-    n_samples2generate = 64000
+    n_samples2generate = 8*64000
     metric_list = pru.MetricLister()
     for snr in constants.SNR_POINTS:
         sm = signal_model.DOASignalModel(run_config.m_sensors,
@@ -40,7 +41,7 @@ def main():
         data_np = data_np.reshape([10000, -1])
         mean_vec = np.mean(data_np, axis=0)
         data_np_norm = data_np - mean_vec
-        max_norm = np.linalg.norm(data_np_norm, axis=-1).max()
+        max_norm = np.linalg.norm(data_np_norm, axis=-1).max()*10
 
         adaptive_trimming = generative_bound.AdaptiveTrimming(
             generative_bound.TrimmingParameters(mean_vec, max_norm, 0),
