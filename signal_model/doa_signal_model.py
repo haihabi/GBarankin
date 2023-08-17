@@ -75,7 +75,7 @@ class DOASignalModel:
             # In practice, you should check if `resolved` is true.
             # We skip the check here.
             cur_mse += np.mean((estimates.locations - sources.locations) ** 2)
-        return cur_mse
+        return cur_mse/n_repeats
 
     def compute_reference_bound(self, in_theta):
         sources = model.FarField1DSourcePlacement(

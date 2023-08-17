@@ -23,7 +23,9 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter('base_dataset_size', type=int, default=200000)
 
     _cr.add_parameter("lr", type=float, default=5e-4)
-    _cr.add_parameter("weight_decay", type=float, default=0.0)
+    _cr.add_parameter("min_lr", type=float, default=1e-5)
+    _cr.add_parameter("warmup_epoch", type=int, default=2)
+    _cr.add_parameter("weight_decay", type=float, default=0)
     _cr.add_parameter("group_name", type=str, default=None)
 
     # _cr.add_parameter("random_padding", type=str, default="false")
@@ -31,7 +33,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    _cr.add_parameter("n_flow_layer", type=int, default=2)
+    _cr.add_parameter("n_flow_layer", type=int, default=0)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")
@@ -49,7 +51,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
-    _cr.add_parameter("signal_type", type=str, default="QAM4", enum=signal_model.SignalType)
+    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
     _cr.add_parameter("snr", type=float, default=None)
     ###############################################
     # Dataset Parameters
@@ -98,18 +100,18 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     flow, flow_ema = build_flow_model(_run_parameters, sm)
     opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
     step_in_epoch = len(training_data_loader)
-    wram_up_epoch = 1
-    max_lr = 5e-4
-    min_lr = 1e-5
+
+    # warmup_epoch = 1
 
     def lr_function(in_step):
         _epoch = in_step % step_in_epoch
-        if _epoch < wram_up_epoch:
-            return (in_step + 1) / (step_in_epoch * wram_up_epoch)
+        if _epoch < in_run_parameters.warmup_epoch:
+            return (in_step + 1) / (step_in_epoch * in_run_parameters.warmup_epoch)
         else:
-            norm_step = in_step - step_in_epoch * wram_up_epoch
-            step_left = step_in_epoch * (n_epochs - wram_up_epoch)
-            return (1 - min_lr / max_lr) * math.cos(math.pi * norm_step / (2 * step_left)) + min_lr / max_lr
+            norm_step = in_step - step_in_epoch * in_run_parameters.warmup_epoch
+            step_left = step_in_epoch * (n_epochs - in_run_parameters.warmup_epoch)
+            return (1 - in_run_parameters.min_lr / in_run_parameters.lr) * math.cos(
+                math.pi * norm_step / (2 * step_left)) + in_run_parameters.min_lr / in_run_parameters.lr
 
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lr_function)
     n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
@@ -131,7 +133,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             target_signal_covariance_matrix)
 
         ncv_re = torch.linalg.norm(
-            flow.find_doa_layer()._noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
+            flow.find_doa_layer().noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
             target_noise_covariance_matrix)
         for x, theta in training_data_loader:
             x, theta = pru.torch.update_device(x, theta)
@@ -172,5 +174,6 @@ if __name__ == '__main__':
             wandb.config.update(cr.get_user_arguments())  # adds all of the arguments as config variables®
             train_model(_run_parameters, _run_log_folder, snr)
             wandb.finish()
-        except:
+        except Exception as e:
+            print(e)
             wandb.finish()

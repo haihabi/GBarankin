@@ -26,7 +26,7 @@ def main():
     user_name = "HVH"
     run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
     theta_value = np.pi / 10
-    n_samples2generate = 8 * 64000
+    n_samples2generate = 64000
     metric_list = pru.MetricLister()
     for snr in constants.SNR_POINTS:
         sm = signal_model.DOASignalModel(run_config.m_sensors,

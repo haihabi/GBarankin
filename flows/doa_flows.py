@@ -57,7 +57,7 @@ class DOAFlow(nfp.NormalizingFlowModel):
                  signal_covariance_matrix=None,
                  noise_covariance_matrix=None,
                  nominal_sensors_locations=None,
-                 n_flow_layer=2):
+                 n_flow_layer=0):
         dim = 2 * n_snapshots * m_sensors
         base_distribution = MultivariateNormal(torch.zeros(dim, device=pru.get_working_device()),
                                                torch.eye(dim,

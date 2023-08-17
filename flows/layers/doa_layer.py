@@ -4,6 +4,7 @@ import normflowpy as nfp
 import pyresearchutils as pru
 from torch import nn
 import constants
+from flows.helpers import LearnedHermitianPositiveDefiniteMatrix
 
 
 class DOALayer(nfp.ConditionalBaseFlowLayer):
@@ -22,12 +23,17 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         self.sensor_location = nn.Parameter(nominal_sensors_locations,
                                             requires_grad=False)
         self.s = 2 * np.pi / wavelength
-        init_signal_covariance_matrix = torch.diag(torch.diagonal(torch.rand(
-            [k_target, k_target]))) + 0 * 1j if signal_covariance_matrix is None else signal_covariance_matrix
-        init_noise_covariance_matrix = torch.diag(torch.diagonal(torch.rand(
-            [m_sensors, m_sensors]))) + 0 * 1j if noise_covariance_matrix is None else noise_covariance_matrix
-        self._signal_covariance_matrix = nn.Parameter(init_signal_covariance_matrix)
-        self._noise_covariance_matrix = nn.Parameter(init_noise_covariance_matrix)
+        # init_signal_covariance_matrix = torch.diag(torch.diagonal(torch.rand(
+        #     [k_target, k_target]))) + 0 * 1j if signal_covariance_matrix is None else signal_covariance_matrix
+        # init_noise_covariance_matrix = torch.diag(torch.diagonal(torch.rand(
+        #     [m_sensors, m_sensors]))) + 0 * 1j if noise_covariance_matrix is None else noise_covariance_matrix
+        # self._signal_covariance_matrix = nn.Parameter(init_signal_covariance_matrix)
+        # self._noise_covariance_matrix = nn.Parameter(init_noise_covariance_matrix)
+
+        self._signal_covariance_matrix = LearnedHermitianPositiveDefiniteMatrix(k_target,
+                                                                                init_matrix=None if signal_covariance_matrix is None else signal_covariance_matrix)
+        self._noise_covariance_matrix = LearnedHermitianPositiveDefiniteMatrix(m_sensors,
+                                                                               init_matrix=None if noise_covariance_matrix is None else noise_covariance_matrix)
         self.eps = 1e-6
 
     def steering_matrix(self, locations):
@@ -42,15 +48,11 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
 
     @property
     def signal_covariance_matrix(self):
-        return (self._signal_covariance_matrix + self._signal_covariance_matrix.T.conj()) * 0.5 + torch.eye(
-            self.k_target,
-            device=self._signal_covariance_matrix.device) * self.eps
+        return self._signal_covariance_matrix()
 
     @property
     def noise_covariance_matrix(self):
-        return torch.eye(self.m_sensors,
-                         device=self._noise_covariance_matrix.device) * self.eps + 0.5 * (
-                self._noise_covariance_matrix + self._noise_covariance_matrix.T.conj())
+        return self._noise_covariance_matrix()
 
     def compute_r_matrix(self, in_a_matrix):
         return ((in_a_matrix @ self.signal_covariance_matrix) @ (
