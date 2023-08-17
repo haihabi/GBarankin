@@ -56,6 +56,27 @@ class DOASignalModel:
         self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.power_noise)
         self.k_targets = k_targets
 
+    def mse_mle(self, in_sources, n_repeats=300):
+        sources = model.FarField1DSourcePlacement(
+            [-np.pi / 10]
+
+        )
+        cur_mse = 0
+        estimator = estimation.RootMUSIC1D(self.wavelength)
+        for r in range(n_repeats):
+            # Stochastic signal model.
+            A = self.array.steering_matrix(sources, self.wavelength)
+            S = self.source_signal.emit(self.n_snapshots)
+            N = self.noise_signal.emit(self.n_snapshots)
+            Y = A @ S + N
+            Rs = (S @ S.conj().T) / self.n_snapshots
+            Ry = (Y @ Y.conj().T) / self.n_snapshots
+            resolved, estimates = estimator.estimate(Ry, sources.size, self.d0)
+            # In practice, you should check if `resolved` is true.
+            # We skip the check here.
+            cur_mse += np.mean((estimates.locations - sources.locations) ** 2)
+        return cur_mse
+
     def compute_reference_bound(self, in_theta):
         sources = model.FarField1DSourcePlacement(
             [in_theta]

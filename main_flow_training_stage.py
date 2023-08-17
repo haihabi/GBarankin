@@ -10,7 +10,7 @@ import constants as C
 import os
 from tqdm import tqdm
 import wandb
-import numpy as np
+import normflowpy as nfp
 import names
 
 
@@ -73,7 +73,8 @@ def build_flow_model(in_run_parameters, in_sm):
                          nominal_sensors_locations=nominal_locations if in_run_parameters.is_sensor_location_known else None,
                          n_flow_layer=in_run_parameters.n_flow_layer)
     flow.to(pru.get_working_device())
-    return flow
+    flow_ema = nfp.FlowEMA(flow)
+    return flow, flow_ema
 
 
 def train_model(in_run_parameters, in_run_log_folder, in_snr):
@@ -94,7 +95,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     validation_data_loader = torch.utils.data.DataLoader(validation_dataset,
                                                          batch_size=in_run_parameters.batch_size,
                                                          shuffle=False)
-    flow = build_flow_model(_run_parameters, sm)
+    flow, flow_ema = build_flow_model(_run_parameters, sm)
     opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
     step_in_epoch = len(training_data_loader)
     wram_up_epoch = 1
@@ -121,7 +122,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     target_noise_covariance_matrix = sm.power_noise * torch.diag(
         torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
         pru.get_working_device()).float() + 0 * 1j
-    # flow_ema = pru.torch.ema.ModelEma(flow)
+
     for epoch in tqdm(range(n_epochs)):
         ma.clear()
 
@@ -139,12 +140,12 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             loss.backward()
             opt.step()
             sch.step()
-            # flow_ema.update(flow)
+            flow_ema.update(flow)
             ma.log(loss=loss.item())
         with torch.no_grad():
             for x, theta in validation_data_loader:
                 x, theta = pru.torch.update_device(x, theta)
-                val_loss = flow.nll_mean(x, doas=theta)
+                val_loss = flow_ema.nll_mean(x, doas=theta)
                 ma.log(val_loss=val_loss.item())
 
         wandb.log({**ma.result,
@@ -152,13 +153,14 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                    'ncv_re': ncv_re.item()})
 
         torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{in_snr}.pth"))
+        torch.save(flow_ema.state_dict(), os.path.join(wandb.run.dir, f"model_ema_{in_snr}.pth"))
 
 
 if __name__ == '__main__':
+    random_name = names.get_full_name().lower().replace(" ", "_")
     cr = init_config()
     _run_parameters, _run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=False)
-    group_name = names.get_full_name().lower().replace(" ",
-                                                       "_") if _run_parameters.group_name is None else _run_parameters.group_name
+    group_name = random_name if _run_parameters.group_name is None else _run_parameters.group_name
 
     snr_list = constants.SNR_POINTS if _run_parameters.snr is None else [_run_parameters.snr]
     for snr in constants.SNR_POINTS:

@@ -22,12 +22,11 @@ def rmse_db(x):
 def main():
     pru.set_seed(0)
     cr = init_config()
-    run_name = "balmy-plasma-90"
     run_name = "clear-sun-96"
     user_name = "HVH"
     run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
     theta_value = np.pi / 10
-    n_samples2generate = 8*64000
+    n_samples2generate = 8 * 64000
     metric_list = pru.MetricLister()
     for snr in constants.SNR_POINTS:
         sm = signal_model.DOASignalModel(run_config.m_sensors,
@@ -36,29 +35,29 @@ def main():
                                          snr,
                                          wavelength=run_config.wavelength)
 
-        data = sm.generate_dataset(10000)
-        data_np = np.stack(data.data, axis=0)
-        data_np = data_np.reshape([10000, -1])
-        mean_vec = np.mean(data_np, axis=0)
-        data_np_norm = data_np - mean_vec
-        max_norm = np.linalg.norm(data_np_norm, axis=-1).max()*10
-
-        adaptive_trimming = generative_bound.AdaptiveTrimming(
-            generative_bound.TrimmingParameters(mean_vec, max_norm, 0),
-            generative_bound.TrimmingType.MAX)
-        adaptive_trimming.to(pru.get_working_device())
-        flow = build_flow_model(run_config, sm)
+        # data = sm.generate_dataset(10000)
+        # data_np = np.stack(data.data, axis=0)
+        # data_np = data_np.reshape([10000, -1])
+        # mean_vec = np.mean(data_np, axis=0)
+        # data_np_norm = data_np - mean_vec
+        # max_norm = np.linalg.norm(data_np_norm, axis=-1).max() * 10
+        #
+        # adaptive_trimming = generative_bound.AdaptiveTrimming(
+        #     generative_bound.TrimmingParameters(mean_vec, max_norm, 0),
+        #     generative_bound.TrimmingType.MAX)
+        # adaptive_trimming.to(pru.get_working_device())
+        flow, _ = build_flow_model(run_config, sm)
         pru.load_model_weights(run, flow, f"model_last_{snr}.pth")
         flow_opt = sm.get_optimal_flow_model()
 
         crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value)
+        mle_mse = sm.mse_mle(theta_value)
         test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
         gbarankin, gbb = generative_bound.generative_barankin_bound(flow, n_samples2generate, test_points,
                                                                     parameter_name=constants.DOAS,
                                                                     doas=torch.tensor([theta_value]).to(
                                                                         pru.get_working_device()).reshape(
-                                                                        [1, -1]).float(),
-                                                                    trimming_step=adaptive_trimming)
+                                                                        [1, -1]).float())
 
         gbarankin_opt, gbb_opt = generative_bound.generative_barankin_bound(flow_opt, n_samples2generate, test_points,
                                                                             parameter_name=constants.DOAS,
@@ -68,7 +67,8 @@ def main():
         metric_list.add_value(gbarankin=gbarankin.item(),
                               gbarankin_opt=gbarankin_opt.item(),
                               crb=crb.flatten(),
-                              bb_bound=bb_bound.flatten())
+                              bb_bound=bb_bound.flatten(),
+                              mle_mse=mle_mse)
 
         print('Completed SNR = {0:.2f} dB'.format(snr))
 
@@ -76,13 +76,13 @@ def main():
     plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_opt")), "--x", label="GBarankin (Optimal)")
     plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("crb")), label="CRB")
     plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("bb_bound")), label="BB")
+    plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("mle_mse")), "o", label="MLE")
     plt.grid()
-    plt.legend()
-    plt.ylabel("RMSE[dB]")
-    plt.xlabel("SNR[dB]")
+    plt.legend(fontsize=16)
+    plt.ylabel("RMSE[dB]", fontsize=16)
+    plt.xlabel("SNR[dB]", fontsize=16)
     plt.savefig("compare_with_learned.svg")
     plt.show()
-    print("a")
 
 
 if __name__ == '__main__':
