@@ -23,7 +23,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter('base_dataset_size', type=int, default=200000)
 
     _cr.add_parameter("lr", type=float, default=5e-4)
-    _cr.add_parameter("min_lr", type=float, default=1e-5)
+    _cr.add_parameter("min_lr", type=float, default=2e-4)
     _cr.add_parameter("warmup_epoch", type=int, default=2)
     _cr.add_parameter("weight_decay", type=float, default=0)
     _cr.add_parameter("group_name", type=str, default=None)
