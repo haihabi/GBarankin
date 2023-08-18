@@ -12,6 +12,7 @@ from tqdm import tqdm
 import wandb
 import normflowpy as nfp
 import names
+from CAdam import CAdam
 
 
 def init_config() -> pru.ConfigReader:
@@ -25,7 +26,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("lr", type=float, default=5e-4)
     _cr.add_parameter("min_lr", type=float, default=2e-4)
     _cr.add_parameter("warmup_epoch", type=int, default=2)
-    _cr.add_parameter("weight_decay", type=float, default=0)
+    _cr.add_parameter("weight_decay", type=float, default=1e-4)
     _cr.add_parameter("group_name", type=str, default=None)
 
     # _cr.add_parameter("random_padding", type=str, default="false")
@@ -33,7 +34,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    _cr.add_parameter("n_flow_layer", type=int, default=0)
+    _cr.add_parameter("n_flow_layer", type=int, default=2)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")
@@ -51,7 +52,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
-    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
+    _cr.add_parameter("signal_type", type=str, default="QAM4", enum=signal_model.SignalType)
     _cr.add_parameter("snr", type=float, default=None)
     ###############################################
     # Dataset Parameters
@@ -98,7 +99,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                                                          batch_size=in_run_parameters.batch_size,
                                                          shuffle=False)
     flow, flow_ema = build_flow_model(_run_parameters, sm)
-    opt = torch.optim.Adam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
+    opt = CAdam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
     step_in_epoch = len(training_data_loader)
 
     # warmup_epoch = 1
@@ -166,14 +167,14 @@ if __name__ == '__main__':
 
     snr_list = constants.SNR_POINTS if _run_parameters.snr is None else [_run_parameters.snr]
     for snr in constants.SNR_POINTS:
-        try:
-            wandb.init(project=C.PROJECT,
-                       dir=_run_parameters.base_log_folder,
-                       group=group_name,
-                       name=group_name + f"_{snr}")  # Set WandB Folder to log folder
-            wandb.config.update(cr.get_user_arguments())  # adds all of the arguments as config variables®
-            train_model(_run_parameters, _run_log_folder, snr)
-            wandb.finish()
-        except Exception as e:
-            print(e)
-            wandb.finish()
+        # try:
+        wandb.init(project=C.PROJECT,
+                   dir=_run_parameters.base_log_folder,
+                   group=group_name,
+                   name=group_name + f"_{snr}")  # Set WandB Folder to log folder
+        wandb.config.update(cr.get_user_arguments())  # adds all of the arguments as config variables®
+        train_model(_run_parameters, _run_log_folder, snr)
+        wandb.finish()
+    # except Exception as e:
+    #     print(e)
+    #     wandb.finish()
