@@ -1,3 +1,4 @@
+from generative_bound.mmd_sample_set import FlowMMD
 from generative_bound.cramer_rao_lower_bound import generative_cramer_rao_bound
 from generative_bound.barankin_bound import generative_barankin_bound
 from generative_bound.utils.adaptive_trimming import TrimmingParameters, AdaptiveTrimming, TrimmingType

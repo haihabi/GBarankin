@@ -16,19 +16,23 @@ from main_flow_training_stage import init_config, build_flow_model
 
 
 def rmse_db(x):
-    return 10 * np.log10(np.sqrt(x))
+    return np.sqrt(x) * 180 / np.pi
 
 
 def main():
     pru.set_seed(0)
     cr = init_config()
-    run_name = "clear-sun-96"
+    # run_name = "clear-sun-96"
+    group_name = "thomas_boyle"
+    group_name = "beatrice_smith"
     user_name = "HVH"
-    run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
+
     theta_value = np.pi / 10
     n_samples2generate = 64000
     metric_list = pru.MetricLister()
     for snr in constants.SNR_POINTS:
+        run_name = group_name + f"_{snr}"
+        run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
         sm = signal_model.DOASignalModel(run_config.m_sensors,
                                          run_config.n_snapshots,
                                          run_config.k_targets,
@@ -53,35 +57,48 @@ def main():
         crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value)
         mle_mse = sm.mse_mle(theta_value)
         test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
-        gbarankin, gbb = generative_bound.generative_barankin_bound(flow, n_samples2generate, test_points,
-                                                                    parameter_name=constants.DOAS,
-                                                                    doas=torch.tensor([theta_value]).to(
-                                                                        pru.get_working_device()).reshape(
-                                                                        [1, -1]).float())
+        gbarankin_ntp, gbb, _, _ = generative_bound.generative_barankin_bound(flow, n_samples2generate,
+                                                                              parameter_name=constants.DOAS,
+                                                                              doas=torch.tensor([theta_value]).to(
+                                                                                  pru.get_working_device()).reshape(
+                                                                                  [1, -1]).float())
 
-        gbarankin_opt, gbb_opt = generative_bound.generative_barankin_bound(flow_opt, n_samples2generate, test_points,
-                                                                            parameter_name=constants.DOAS,
-                                                                            doas=torch.tensor([theta_value]).to(
-                                                                                pru.get_working_device()).reshape(
-                                                                                [1, -1]).float())
+        gbarankin, gbb, _, _ = generative_bound.generative_barankin_bound(flow, n_samples2generate, test_points,
+                                                                          parameter_name=constants.DOAS,
+                                                                          doas=torch.tensor([theta_value]).to(
+                                                                              pru.get_working_device()).reshape(
+                                                                              [1, -1]).float())
+        if flow_opt is not None:
+            gbarankin_opt, gbb_opt, _, _ = generative_bound.generative_barankin_bound(flow_opt, n_samples2generate,
+                                                                                      test_points,
+                                                                                      parameter_name=constants.DOAS,
+                                                                                      doas=torch.tensor(
+                                                                                          [theta_value]).to(
+                                                                                          pru.get_working_device()).reshape(
+                                                                                          [1, -1]).float())
         metric_list.add_value(gbarankin=gbarankin.item(),
-                              gbarankin_opt=gbarankin_opt.item(),
+                              gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
+                              gbarankin_ntp=gbarankin_ntp.item(),
                               crb=crb.flatten(),
                               bb_bound=bb_bound.flatten(),
                               mle_mse=mle_mse)
 
         print('Completed SNR = {0:.2f} dB'.format(snr))
-
-    plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin")), "--o", label="GBarankin (Learned)")
-    plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_opt")), "--x", label="GBarankin (Optimal)")
-    plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("crb")), label="CRB")
-    plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("bb_bound")), label="BB")
-    plt.plot(constants.SNR_POINTS, rmse_db(metric_list.get_array("mle_mse")), "o", label="MLE")
+    plt.figure(figsize=(10, 8))
+    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_ntp")), "--v",
+                 label="GBarankin (Learned,TP)")
+    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin")), "--o", label="GBarankin (Learned)")
+    if flow_opt is not None:
+        plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_opt")), "--x",
+                     label="GBarankin (Optimal)")
+    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("crb")), label="CRB")
+    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("bb_bound")), label="BB")
+    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("mle_mse")), "o", label="MLE")
     plt.grid()
-    plt.legend(fontsize=16)
-    plt.ylabel("RMSE[dB]", fontsize=16)
-    plt.xlabel("SNR[dB]", fontsize=16)
-    plt.savefig("compare_with_learned.svg")
+    plt.legend(fontsize=14)
+    plt.ylabel("RMSE[deg]", fontsize=14)
+    plt.xlabel("SNR[dB]", fontsize=14)
+    plt.savefig(f"compare_with_learned_{group_name}.svg")
     plt.show()
 
 

@@ -34,14 +34,15 @@ def barankin_matrix(in_flow_model, gamma, theta_test, parameter_name: str, searc
 
 
 def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=2048, max_test_points=30,
-                       test_points_search=1600,
+                       n_test_points_search=1600,
                        eps=1e-2,
                        **in_kwargs):
     print("Starting Test Point Search")
     in_param_dict = copy.copy(in_kwargs)
     range_min = -math.pi / 2
     range_max = math.pi / 2
-    base_array = torch.linspace(range_min + eps, range_max - eps, test_points_search).to(pru.get_working_device())
+    base_array = torch.linspace(range_min + eps, range_max - eps, n_test_points_search).to(pru.get_working_device())
+    delta = torch.diff(base_array).min()
     subset = torch.utils.data.Subset(in_samples_data, [i for i in range(search_size)])
     dl = torch.utils.data.DataLoader(subset, batch_size=batch_size)
     data_list = []
@@ -53,31 +54,47 @@ def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=2
         delta_nll = 2 * nll_base.unsqueeze(dim=-1) - 2 * nll_search
         data_list.append(delta_nll)
     # print("a")
-    bm_matrix = torch.mean(torch.exp(torch.cat(data_list)), dim=0)
-    search_landscape = 1 / bm_matrix
-    search_landscape = search_landscape.cpu().numpy()
+    # bounded = torch.maximum(
+    #     torch.minimum(torch.exp(torch.cat(data_list)), torch.ones(1, device=pru.get_working_device())),
+    #     torch.ones(1, device=pru.get_working_device()) * 0.2)
+    bounded = torch.exp(torch.cat(data_list))
+    bm_matrix = torch.mean(bounded, dim=0)
+    index = bm_matrix > 1
+    m = torch.sum(bm_matrix > 1)
+    if m > 0:
+        bm_matrix = bm_matrix[index]
+        test_points_search = base_array[index]
+        search_landscape = 1 / bm_matrix
+        search_landscape = search_landscape.cpu().numpy()
 
-    peaks = scipy.signal.find_peaks(search_landscape)[0]
-
-    # from matplotlib import pyplot as plt
-    #
-    # plt.plot(base_array.cpu().numpy(), search_landscape)
-    # plt.plot(base_array.cpu().numpy()[peaks], search_landscape[peaks], "v")
-    # plt.grid()
-    # plt.show()
-
-    return base_array.reshape([1, -1])[:, peaks].reshape([-1, 1]), search_landscape
+        peaks = scipy.signal.find_peaks(search_landscape)[0]
+        # if len(peaks) > 1:
+        #     sel = test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1])
+        #     pos_delta = test_points_search.reshape([1, -1])[:, peaks + 1].reshape([-1, 1])
+        #     neg_delta = test_points_search.reshape([1, -1])[:, peaks - 1].reshape([-1, 1])
+        #     index_to_keep = torch.logical_and(torch.isclose(torch.abs(pos_delta - sel), delta, rtol=1, atol=delta),
+        #                                       torch.isclose(torch.abs(neg_delta - sel), delta, rtol=1,
+        #                                                     atol=delta)).cpu().numpy().flatten()
+        #     peaks = peaks[index_to_keep]
+        if len(peaks) > 0:
+            return test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1]), search_landscape, test_points_search
+        else:
+            raise NotImplemented
+    else:
+        NotImplemented
 
 
 def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, trimming_step=None,
                                temperature: float = 1.0, eps=1e-12, parameter_name=constants.THETA,
                                **kwargs):
     search_landscape = None
+    test_points_search = None
     with torch.no_grad():
         sample_data = utils.generate_samples(in_flow_model, m, batch_size, trimming_step, temperature, **kwargs)
         train_dataloader = DataLoader(sample_data, batch_size=batch_size, shuffle=False)
         if test_points is None:
-            test_points, search_landscape = search_test_points(in_flow_model, sample_data, batch_size, **kwargs)
+            test_points, search_landscape, test_points_search = search_test_points(in_flow_model, sample_data,
+                                                                                   batch_size, **kwargs)
 
         count = 0
         bb_info = torch.zeros([test_points.shape[0], test_points.shape[0]], device=test_points.device)
@@ -93,23 +110,27 @@ def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, tr
 
         bb_info_inv = torch.linalg.inv(bb_info - torch.ones_like(bb_info))
         tau_vector = (test_points - kwargs[parameter_name]).double()
-    return bb_info_inv, tau_vector, bb_info, search_landscape
+    return bb_info_inv, tau_vector, bb_info, search_landscape, test_points_search
 
 
 def generative_barankin_bound(in_flow_model, m, test_points=None, batch_size=128, trimming_step=None,
                               temperature: float = 1.0, eps=1e-12, parameter_name=constants.THETA,
                               **kwargs):
-    bb_info_inv, tau_vector, bb_info, search_landscape = _generative_barankin_bound(in_flow_model, m, test_points,
-                                                                                    batch_size,
-                                                                                    trimming_step,
-                                                                                    temperature, eps, parameter_name,
-                                                                                    **kwargs)
+    bb_info_inv, tau_vector, bb_info, search_landscape, test_points_search = _generative_barankin_bound(in_flow_model,
+                                                                                                        m, test_points,
+                                                                                                        batch_size,
+                                                                                                        trimming_step,
+                                                                                                        temperature,
+                                                                                                        eps,
+                                                                                                        parameter_name,
+                                                                                                        **kwargs)
     bound = torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
     if torch.any(bound.diagonal() < 0).item():
-        bb_info_inv, tau_vector, bb_info, search_landscape = _generative_barankin_bound(in_flow_model, m, test_points,
-                                                                                        batch_size,
-                                                                                        trimming_step,
-                                                                                        temperature, eps,
-                                                                                        parameter_name, **kwargs)
+        bb_info_inv, tau_vector, bb_info, search_landscape, test_points_search = _generative_barankin_bound(
+            in_flow_model, m, test_points,
+            batch_size,
+            trimming_step,
+            temperature, eps,
+            parameter_name, **kwargs)
         bound = torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
-    return bound, bb_info, search_landscape
+    return bound, bb_info, search_landscape, test_points_search

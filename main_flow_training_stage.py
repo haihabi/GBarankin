@@ -3,6 +3,7 @@ import math
 import torch.utils.data
 
 import constants
+import generative_bound
 import signal_model
 import flows
 import pyresearchutils as pru
@@ -23,10 +24,10 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("base_epochs", type=int, default=160)
     _cr.add_parameter('base_dataset_size', type=int, default=200000)
 
-    _cr.add_parameter("lr", type=float, default=5e-4)
-    _cr.add_parameter("min_lr", type=float, default=2e-4)
+    _cr.add_parameter("lr", type=float, default=1e-4)
+    _cr.add_parameter("min_lr", type=float, default=1e-5)
     _cr.add_parameter("warmup_epoch", type=int, default=2)
-    _cr.add_parameter("weight_decay", type=float, default=1e-4)
+    _cr.add_parameter("weight_decay", type=float, default=0.0)
     _cr.add_parameter("group_name", type=str, default=None)
 
     # _cr.add_parameter("random_padding", type=str, default="false")
@@ -34,7 +35,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    _cr.add_parameter("n_flow_layer", type=int, default=2)
+    _cr.add_parameter("n_flow_layer", type=int, default=4)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")
@@ -60,7 +61,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter('base_dataset_folder', type=str, default="./temp/datasets")
     _cr.add_parameter('batch_size', type=int, default=512)
     _cr.add_parameter('dataset_size', type=int, default=200000)  # 200000
-    _cr.add_parameter('val_dataset_size', type=int, default=20000)
+    _cr.add_parameter('val_dataset_size', type=int, default=2000)
     _cr.add_parameter('force_data_generation', type=str, default="false")
 
     return _cr
@@ -125,7 +126,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     target_noise_covariance_matrix = sm.power_noise * torch.diag(
         torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
         pru.get_working_device()).float() + 0 * 1j
-
+    mmd_metric = generative_bound.FlowMMD()
     for epoch in tqdm(range(n_epochs)):
         ma.clear()
 
@@ -136,6 +137,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
         ncv_re = torch.linalg.norm(
             flow.find_doa_layer().noise_covariance_matrix - target_noise_covariance_matrix) / torch.linalg.norm(
             target_noise_covariance_matrix)
+        flow.train()
         for x, theta in training_data_loader:
             x, theta = pru.torch.update_device(x, theta)
             opt.zero_grad()
@@ -143,23 +145,35 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             loss.backward()
             opt.step()
             sch.step()
-            flow_ema.update(flow)
+            # flow_ema.update(flow)
             ma.log(loss=loss.item())
+        flow.eval()
         with torch.no_grad():
             for x, theta in validation_data_loader:
                 x, theta = pru.torch.update_device(x, theta)
-                val_loss = flow_ema.nll_mean(x, doas=theta)
-                ma.log(val_loss=val_loss.item())
+                y = flow.sample(x.shape[0], doas=theta).detach()
 
+                mmd_metric.add_samples(x, y)
+                # val_loss_ema = flow_ema.nll_mean(x, doas=theta)
+                val_loss = flow.nll_mean(x, doas=theta)
+                # ma.log(val_loss_ema=val_loss_ema.item())
+                ma.log(val_loss=val_loss.item())
+        mmd = mmd_metric.compute_mmd()
+        mmd_metric.clear()
         wandb.log({**ma.result,
+                   "MMD": mmd,
                    "scv_re": scv_re.item(),
                    'ncv_re': ncv_re.item()})
 
         torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{in_snr}.pth"))
-        torch.save(flow_ema.state_dict(), os.path.join(wandb.run.dir, f"model_ema_{in_snr}.pth"))
+        # torch.save(flow_ema.state_dict(), os.path.join(wandb.run.dir, f"model_ema_{in_snr}.pth"))
 
 
 if __name__ == '__main__':
+    import faulthandler
+
+    faulthandler.enable()  # start @ the beginning
+
     random_name = names.get_full_name().lower().replace(" ", "_")
     cr = init_config()
     _run_parameters, _run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=False)
