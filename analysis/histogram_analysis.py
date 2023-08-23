@@ -12,11 +12,35 @@ import torch
 import pyresearchutils as pru
 import generative_bound
 
+
+def relative_error(in_est, in_ref):
+    return np.linalg.norm(in_est - in_ref) / np.linalg.norm(in_ref)
+
+
+def run_trails(in_flow_model, in_n_samples, in_m_trails, in_test_points, in_sources, ref_barankin, ref_bb):
+    results_list = []
+    for i in range(in_m_trails):
+        gbarankin, gbb, _, _ = generative_bound.generative_barankin_bound(in_flow_model, in_n_samples, in_test_points,
+                                                                          parameter_name=constants.DOAS,
+                                                                          doas=torch.tensor(in_sources).to(
+                                                                              pru.get_working_device()).reshape(
+                                                                              [1, -1]).float())
+        re_bb = relative_error(gbarankin.cpu().numpy(), ref_barankin)
+        re_bm = relative_error(gbb.cpu().numpy(), ref_bb)
+        results_list.append([re_bb, re_bm])
+    return np.asarray(results_list)
+
+
+###########################
+# Parameters
+###########################
 wavelength = 1.0  # normalized
 d0 = wavelength / 2
 m_sensors = 20
 k_targets = 1
-
+n_samples2generate = 512
+n_snapshots = 10
+m_trails = 1000
 # Create a 12-element ULA.
 ula = model.UniformLinearArray(m_sensors, d0)
 # Place 8 sources uniformly within (-pi/3, pi/4)
@@ -28,87 +52,55 @@ sources = model.FarField1DSourcePlacement(
 power_source = 1  # Normalized
 source_signal = model.ComplexStochasticSignal(sources.size, power_source)
 # 200 snapshots.
-n_snapshots = 10
+
 # We use root-MUSIC.
 estimator = estimation.RootMUSIC1D(wavelength)
 
-# snrs = np.linspace(-30, 10, 15)
-# print(np.round(snrs))
 snrs = constants.SNR_POINTS
-# print("a")
-# snrs = [-12.5]
-# 300 Monte Carlo runs for each SNR
-n_repeats = 300
+# n_repeats = 300
 
-mses = np.zeros((len(snrs),))
+# mses = np.zeros((len(snrs),))
 # crbs_sto = np.zeros((len(snrs),))
-barankin_stouc = np.zeros((len(snrs),))
-gbarankin_stouc = np.zeros((len(snrs),))
+# barankin_stouc = np.zeros((len(snrs),))
+# gbarankin_stouc = np.zeros((len(snrs),))
 # crbs_det = np.zeros((len(snrs),))
-crbs_stouc = np.zeros((len(snrs),))
-gcrbs_stouc = np.zeros((len(snrs),))
+# crbs_stouc = np.zeros((len(snrs),))
+# gcrbs_stouc = np.zeros((len(snrs),))
+snr = -20
+# for i, snr in enumerate(snrs):
+power_noise = power_source / (10 ** (snr / 10))
+noise_signal = model.ComplexStochasticSignal(ula.size, power_noise)
 
-for i, snr in enumerate(snrs):
-    power_noise = power_source / (10 ** (snr / 10))
-    noise_signal = model.ComplexStochasticSignal(ula.size, power_noise)
+# B_stouc, _ = perf.crb_stouc_farfield_1d(ula, sources, wavelength, power_source,
+#                                         power_noise, n_snapshots)
+print("Compute Barankin Bound")
+BB_stouc, bb_matrix, test_points = perf.barankin_stouc_farfield_1d(ula, sources, wavelength, power_source,
+                                                                   power_noise, n_snapshots)
+print(test_points.shape)
+#################
+# Generative Bound
+#################
+# The squared errors and the deterministic CRB varies
+# for each run. We need to compute the average.
+locations = torch.Tensor(ula._locations)
+if locations.shape[1] == 1:
+    locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
 
-    B_stouc, _ = perf.crb_stouc_farfield_1d(ula, sources, wavelength, power_source,
-                                            power_noise, n_snapshots)
-    BB_stouc, bb_matrix, test_points = perf.barankin_stouc_farfield_1d(ula, sources, wavelength, power_source,
-                                                                       power_noise, n_snapshots)
-    print(test_points.shape)
-    #################
-    # Generative Bound
-    #################
-    # The squared errors and the deterministic CRB varies
-    # for each run. We need to compute the average.
-    locations = torch.Tensor(ula._locations)
-    if locations.shape[1] == 1:
-        locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
-    n_samples2generate = 64000
-    doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
-                                     nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
-                                     signal_covariance_matrix=torch.diag(
-                                         torch.diag(torch.ones(k_targets, k_targets))).to(
-                                         pru.get_working_device()).float() + 0 * 1j,
-                                     noise_covariance_matrix=power_noise * torch.diag(
-                                         torch.diag(torch.ones(m_sensors, m_sensors))).to(
-                                         pru.get_working_device()).float() + 0 * 1j)
-    doa_optimal_flow = doa_optimal_flow.to(pru.get_working_device())
-    test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
-    gbarankin, gbb = generative_bound.generative_barankin_bound(doa_optimal_flow, n_samples2generate, test_points,
-                                                                parameter_name=constants.DOAS,
-                                                                doas=torch.tensor(sources).to(
-                                                                    pru.get_working_device()).reshape(
-                                                                    [1, -1]).float())
+doa_optimal_flow = flows.DOAFlow(n_snapshots, m_sensors, k_targets, wavelength,
+                                 nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
+                                 signal_covariance_matrix=torch.diag(
+                                     torch.diag(torch.ones(k_targets, k_targets))).to(
+                                     pru.get_working_device()).float() + 0 * 1j,
+                                 noise_covariance_matrix=power_noise * torch.diag(
+                                     torch.diag(torch.ones(m_sensors, m_sensors))).to(
+                                     pru.get_working_device()).float() + 0 * 1j)
+doa_optimal_flow = doa_optimal_flow.to(pru.get_working_device())
+test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
 
-    print(gbarankin, BB_stouc)
-    # print(gcrb, B_stouc)
-    gbb_np = gbb.cpu().numpy()
-
-    print("BB RE", np.linalg.norm(gbb.cpu().numpy() - bb_matrix) / np.linalg.norm(bb_matrix))
-    print("GBB RE", np.linalg.norm(gbarankin.cpu().numpy() - BB_stouc) / np.linalg.norm(BB_stouc))
-    # print("GCRB RE", np.linalg.norm(gcrb.cpu().numpy() - B_stouc) / np.linalg.norm(B_stouc))
-    # gcrbs_stouc[i] = np.sqrt(torch.diag(gcrb).mean().item())
-    # gbarankin_stouc[i] = np.sqrt(torch.diag(gbarankin).mean().item())
-    # cur_mse = 0.0
-    #
-    # for r in range(n_repeats):
-    #     # Stochastic signal model.
-    #     A = ula.steering_matrix(sources, wavelength)
-    #
-    #     S = source_signal.emit(n_snapshots)
-    #     N = noise_signal.emit(n_snapshots)
-    #     Y = A @ S + N
-    #     Rs = (S @ S.conj().T) / n_snapshots
-    #     Ry = (Y @ Y.conj().T) / n_snapshots
-    #     resolved, estimates = estimator.estimate(Ry, sources.size, d0)
-    #     # In practice, you should check if `resolved` is true.
-    #     # We skip the check here.
-    #     cur_mse += np.mean((estimates.locations - sources.locations) ** 2)
-    #
-    # mses[i] = np.sqrt(cur_mse / n_repeats)
-    #
-    # crbs_stouc[i] = np.sqrt(np.mean(np.diag(B_stouc)))
-    # barankin_stouc[i] = np.sqrt(np.mean(np.diag(BB_stouc)))
-    # print('Completed SNR = {0:.2f} dB'.format(snr))
+data = run_trails(doa_optimal_flow, n_samples2generate, m_trails, test_points, sources, BB_stouc, bb_matrix)
+plt.subplot(1, 2, 1)
+plt.hist(data[:, 0])
+plt.subplot(1, 2, 2)
+plt.hist(data[:, 1])
+plt.show()
+print("a")
