@@ -23,8 +23,8 @@ def main():
     pru.set_seed(0)
     cr = init_config()
     # run_name = "clear-sun-96"
-    group_name = "thomas_boyle"
-    group_name = "beatrice_smith"
+    # group_name = "thomas_boyle"
+    group_name = "roger_eplin"
     user_name = "HVH"
 
     theta_value = np.pi / 10
@@ -39,45 +39,33 @@ def main():
                                          snr,
                                          wavelength=run_config.wavelength)
 
-        # data = sm.generate_dataset(10000)
-        # data_np = np.stack(data.data, axis=0)
-        # data_np = data_np.reshape([10000, -1])
-        # mean_vec = np.mean(data_np, axis=0)
-        # data_np_norm = data_np - mean_vec
-        # max_norm = np.linalg.norm(data_np_norm, axis=-1).max() * 10
-        #
-        # adaptive_trimming = generative_bound.AdaptiveTrimming(
-        #     generative_bound.TrimmingParameters(mean_vec, max_norm, 0),
-        #     generative_bound.TrimmingType.MAX)
-        # adaptive_trimming.to(pru.get_working_device())
         flow, _ = build_flow_model(run_config, sm)
         pru.load_model_weights(run, flow, f"model_last_{snr}.pth")
         flow_opt = sm.get_optimal_flow_model()
 
         crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value)
         mle_mse = sm.mse_mle(theta_value)
-        test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
         gbarankin_ntp, gbb, _, _ = generative_bound.generative_barankin_bound(flow, n_samples2generate,
                                                                               parameter_name=constants.DOAS,
                                                                               doas=torch.tensor([theta_value]).to(
                                                                                   pru.get_working_device()).reshape(
                                                                                   [1, -1]).float())
 
-        gbarankin, gbb, _, _ = generative_bound.generative_barankin_bound(flow, n_samples2generate, test_points,
+        gbarankin, gbb, _, _ = generative_bound.generative_barankin_bound(flow_opt, n_samples2generate,
                                                                           parameter_name=constants.DOAS,
                                                                           doas=torch.tensor([theta_value]).to(
                                                                               pru.get_working_device()).reshape(
                                                                               [1, -1]).float())
-        if flow_opt is not None:
-            gbarankin_opt, gbb_opt, _, _ = generative_bound.generative_barankin_bound(flow_opt, n_samples2generate,
-                                                                                      test_points,
-                                                                                      parameter_name=constants.DOAS,
-                                                                                      doas=torch.tensor(
-                                                                                          [theta_value]).to(
-                                                                                          pru.get_working_device()).reshape(
-                                                                                          [1, -1]).float())
+        # if flow_opt is not None:
+        #     gbarankin_opt, gbb_opt, _, _ = generative_bound.generative_barankin_bound(flow_opt, n_samples2generate,
+        #                                                                               test_points,
+        #                                                                               parameter_name=constants.DOAS,
+        #                                                                               doas=torch.tensor(
+        #                                                                                   [theta_value]).to(
+        #                                                                                   pru.get_working_device()).reshape(
+        #                                                                                   [1, -1]).float())
         metric_list.add_value(gbarankin=gbarankin.item(),
-                              gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
+                              # gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
                               gbarankin_ntp=gbarankin_ntp.item(),
                               crb=crb.flatten(),
                               bb_bound=bb_bound.flatten(),
@@ -86,11 +74,11 @@ def main():
         print('Completed SNR = {0:.2f} dB'.format(snr))
     plt.figure(figsize=(10, 8))
     plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_ntp")), "--v",
-                 label="GBarankin (Learned,TP)")
-    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin")), "--o", label="GBarankin (Learned)")
-    if flow_opt is not None:
-        plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_opt")), "--x",
-                     label="GBarankin (Optimal)")
+                 label=f"GBarankin (Learned,{run_config.signal_type.name})")
+    plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin")), "--o", label="GBarankin (Optimal, Gaussian)")
+    # if flow_opt is not None:
+    #     plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("gbarankin_opt")), "--x",
+    #                  label="GBarankin (Optimal)")
     plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("crb")), label="CRB")
     plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("bb_bound")), label="BB")
     plt.semilogy(constants.SNR_POINTS, rmse_db(metric_list.get_array("mle_mse")), "o", label="MLE")

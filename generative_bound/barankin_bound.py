@@ -68,14 +68,14 @@ def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=2
         search_landscape = search_landscape.cpu().numpy()
 
         peaks = scipy.signal.find_peaks(search_landscape)[0]
-        # if len(peaks) > 1:
-        #     sel = test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1])
-        #     pos_delta = test_points_search.reshape([1, -1])[:, peaks + 1].reshape([-1, 1])
-        #     neg_delta = test_points_search.reshape([1, -1])[:, peaks - 1].reshape([-1, 1])
-        #     index_to_keep = torch.logical_and(torch.isclose(torch.abs(pos_delta - sel), delta, rtol=1, atol=delta),
-        #                                       torch.isclose(torch.abs(neg_delta - sel), delta, rtol=1,
-        #                                                     atol=delta)).cpu().numpy().flatten()
-        #     peaks = peaks[index_to_keep]
+        if len(peaks) > 1:
+            sel = test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1])
+            pos_delta = test_points_search.reshape([1, -1])[:, peaks + 1].reshape([-1, 1])
+            neg_delta = test_points_search.reshape([1, -1])[:, peaks - 1].reshape([-1, 1])
+            index_to_keep = torch.logical_and(torch.isclose(torch.abs(pos_delta - sel), delta, rtol=1, atol=delta),
+                                              torch.isclose(torch.abs(neg_delta - sel), delta, rtol=1,
+                                                            atol=delta)).cpu().numpy().flatten()
+            peaks = peaks[index_to_keep]
         if len(peaks) > 0:
             return test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1]), search_landscape, test_points_search
         else:

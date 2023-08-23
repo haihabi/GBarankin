@@ -25,9 +25,9 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter('base_dataset_size', type=int, default=200000)
 
     _cr.add_parameter("lr", type=float, default=1e-4)
-    _cr.add_parameter("min_lr", type=float, default=1e-5)
+    _cr.add_parameter("min_lr", type=float, default=5e-5)
     _cr.add_parameter("warmup_epoch", type=int, default=2)
-    _cr.add_parameter("weight_decay", type=float, default=0.0)
+    _cr.add_parameter("weight_decay", type=float, default=1e-4)
     _cr.add_parameter("group_name", type=str, default=None)
 
     # _cr.add_parameter("random_padding", type=str, default="false")
@@ -87,7 +87,8 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                                      in_run_parameters.n_snapshots,
                                      in_run_parameters.k_targets,
                                      in_snr,
-                                     wavelength=in_run_parameters.wavelength)
+                                     wavelength=in_run_parameters.wavelength,
+                                     signal_type=in_run_parameters.signal_type)
 
     training_dataset = sm.generate_dataset(in_run_parameters.dataset_size)
     validation_dataset = sm.generate_dataset(in_run_parameters.val_dataset_size)
@@ -117,8 +118,8 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
 
     sch = torch.optim.lr_scheduler.LambdaLR(opt, lr_function)
     n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
-    if in_snr < -10:
-        n_epochs = int(3.5 * n_epochs)
+    if in_snr < 1:
+        n_epochs = int(2.5 * n_epochs)
     ma = pru.MetricAveraging()
     target_signal_covariance_matrix = torch.diag(
         torch.diag(torch.ones(in_run_parameters.k_targets, in_run_parameters.k_targets))).to(
