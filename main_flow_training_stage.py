@@ -53,7 +53,9 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
-    _cr.add_parameter("signal_type", type=str, default="QAM4", enum=signal_model.SignalType)
+    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
+    _cr.add_parameter("noise_type", type=str, default="Uncorrelated", enum=signal_model.NoiseMatrix)
+    _cr.add_parameter("array_perturbed_scale", type=float, default=0.3)
     _cr.add_parameter("snr", type=float, default=None)
     ###############################################
     # Dataset Parameters
@@ -81,15 +83,21 @@ def build_flow_model(in_run_parameters, in_sm):
     return flow, flow_ema
 
 
+def build_signal_model(in_run_parameters, in_snr):
+    return signal_model.DOASignalModel(in_run_parameters.m_sensors,
+                                       in_run_parameters.n_snapshots,
+                                       in_run_parameters.k_targets,
+                                       in_snr,
+                                       wavelength=in_run_parameters.wavelength,
+                                       signal_type=in_run_parameters.signal_type,
+                                       noise_type=in_run_parameters.noise_type,
+                                       array_perturbed_scale=in_run_parameters.array_perturbed_scale)
+
+
 def train_model(in_run_parameters, in_run_log_folder, in_snr):
     print(f"Starting Training Stage At SNR:{in_snr}")
-    sm = signal_model.DOASignalModel(in_run_parameters.m_sensors,
-                                     in_run_parameters.n_snapshots,
-                                     in_run_parameters.k_targets,
-                                     in_snr,
-                                     wavelength=in_run_parameters.wavelength,
-                                     signal_type=in_run_parameters.signal_type)
 
+    sm = build_signal_model(in_run_parameters, in_snr)
     training_dataset = sm.generate_dataset(in_run_parameters.dataset_size)
     validation_dataset = sm.generate_dataset(in_run_parameters.val_dataset_size)
 
@@ -128,6 +136,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
         torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
         pru.get_working_device()).float() + 0 * 1j
     mmd_metric = generative_bound.FlowMMD()
+    sm.save_model(wandb.run.dir)
     for epoch in tqdm(range(n_epochs)):
         ma.clear()
 
@@ -171,10 +180,6 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
 
 
 if __name__ == '__main__':
-    import faulthandler
-
-    faulthandler.enable()  # start @ the beginning
-
     random_name = names.get_full_name().lower().replace(" ", "_")
     cr = init_config()
     _run_parameters, _run_log_folder = pru.initialized_log(C.PROJECT, cr, enable_wandb=False)
