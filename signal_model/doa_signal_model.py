@@ -25,7 +25,7 @@ class QAM4(SignalGenerator):
     def _generator(self, n):
         a = 2 * np.random.randint(low=0, high=2, size=(self.dim, n)) - 1
         b = 2 * np.random.randint(low=0, high=2, size=(self.dim, n)) - 1
-        return (a + 1j * b) / self.scale
+        return (a + 1j * b) * self.scale
 
     @property
     def dim(self):
@@ -69,7 +69,7 @@ class DOASignalModel:
             S = self.source_signal.emit(self.n_snapshots)
             N = self.noise_signal.emit(self.n_snapshots)
             Y = A @ S + N
-            Rs = (S @ S.conj().T) / self.n_snapshots
+            # Rs = (S @ S.conj().T) / self.n_snapshots
             Ry = (Y @ Y.conj().T) / self.n_snapshots
             resolved, estimates = estimator.estimate(Ry, sources.size, self.d0)
             # In practice, you should check if `resolved` is true.
@@ -90,8 +90,8 @@ class DOASignalModel:
         return crb, bb_bound, bb_matrix, test_points
 
     def get_optimal_flow_model(self):
-        if self.signal_type != SignalType.ComplexGaussian:
-            return None
+        # if self.signal_type != SignalType.ComplexGaussian:
+        #     return None
         locations = torch.Tensor(self.array._locations)
         if locations.shape[1] == 1:
             locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)

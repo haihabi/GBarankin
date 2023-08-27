@@ -35,7 +35,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    _cr.add_parameter("n_flow_layer", type=int, default=4)
+    _cr.add_parameter("n_flow_layer", type=int, default=2)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")

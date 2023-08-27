@@ -13,9 +13,9 @@ def add_flow_step(flows, n_flow_layers, input_vector_shape,
                   in_n_snapshots,
                   in_m_sensors,
                   n_layer_inject=2,
-                  n_hidden_inject=32,
+                  n_hidden_inject=16,
                   inject_scale=False,
-                  inject_bias=True,
+                  inject_bias=False,
                   affine_coupling=False,
                   complex_affine_coupling=True,
                   affine_inject=False,
@@ -26,27 +26,34 @@ def add_flow_step(flows, n_flow_layers, input_vector_shape,
             flows.append(
                 nfp.flows.ActNorm(input_vector_shape))
             flows.append(nfp.flows.Vector2Tensor([in_n_snapshots, in_m_sensors, 2]))
-            # flows.append(
-            #     nfp.flows.InvertibleFullyConnected(dim=2, random_initialization=False))
+            flows.append(
+                nfp.flows.InvertibleFullyConnected(dim=2, random_initialization=False))
             flows.append(nfp.flows.AffineCoupling(x_shape=[in_n_snapshots, in_m_sensors, 2],
-                                                  parity=b % 2,
+                                                  parity=0,
                                                   net_class=nfp.base_nets.generate_mlp_class(n_layer=n_layer_inject,
                                                                                              non_linear_function=nn.SiLU,
                                                                                              bias=inject_bias),
-                                                  nh=n_hidden_inject, scale=False))
+                                                  nh=n_hidden_inject, scale=True))
+            flows.append(nfp.flows.AffineCoupling(x_shape=[in_n_snapshots, in_m_sensors, 2],
+                                                  parity=1,
+                                                  net_class=nfp.base_nets.generate_mlp_class(n_layer=n_layer_inject,
+                                                                                             non_linear_function=nn.SiLU,
+                                                                                             bias=inject_bias),
+                                                  nh=n_hidden_inject, scale=True))
             flows.append(nfp.flows.Tensor2Vector([in_n_snapshots, in_m_sensors, 2]))
 
         else:
-            flows.append(
-                nfp.flows.InvertibleFullyConnected(dim=input_vector_shape[0], random_initialization=True))
-            flows.append(nfp.flows.AffineCoupling(x_shape=input_vector_shape,
-                                                  parity=b % 2,
-                                                  net_class=nfp.base_nets.generate_mlp_class(n_layer=n_layer_inject,
-                                                                                             non_linear_function=nn.SiLU,
-                                                                                             bias=inject_bias),
-                                                  nh=n_hidden_inject, scale=False))
-            flows.append(
-                nfp.flows.ActNorm(input_vector_shape))
+            raise NotImplemented
+            # flows.append(
+            #     nfp.flows.InvertibleFullyConnected(dim=input_vector_shape[0], random_initialization=True))
+            # flows.append(nfp.flows.AffineCoupling(x_shape=input_vector_shape,
+            #                                       parity=b % 2,
+            #                                       net_class=nfp.base_nets.generate_mlp_class(n_layer=n_layer_inject,
+            #                                                                                  non_linear_function=nn.SiLU,
+            #                                                                                  bias=inject_bias),
+            #                                       nh=n_hidden_inject, scale=False))
+            # flows.append(
+            #     nfp.flows.ActNorm(input_vector_shape))
         # flows.append(
         #     nfp.flows.InvertibleFullyConnected(dim=input_vector_shape[0], random_initialization=True))
         # if affine_inject:
