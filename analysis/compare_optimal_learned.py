@@ -44,9 +44,10 @@ def main():
 
     group_name = "thomas_boyle"
     # group_name = "janice_sullivan"
+    group_name = "brandi_mccammon"
     user_name = "HVH"
     apply_trimming = False
-    use_ref_test_points = True
+    use_ref_test_points = False
     theta_value = np.pi / 10
     n_samples2generate = 64000
     metric_list = pru.MetricLister()

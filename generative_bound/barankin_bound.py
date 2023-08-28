@@ -18,7 +18,7 @@ def barankin_matrix(in_flow_model, gamma, theta_test, parameter_name: str, searc
     nll_test_point_list = []
     k_test_points = theta_test.shape[0]
     for i in range(k_test_points):
-        in_param_dict[parameter_name] = torch.reshape(theta_test[i, :], [-1, 1])
+        in_param_dict[parameter_name] = torch.reshape(theta_test[i, :], [1, -1])
         nll_test_point = in_flow_model.nll(gamma, **in_param_dict)
         nll_test_point_list.append(nll_test_point)
     nll_test_point_matrix = torch.stack(nll_test_point_list).transpose(-1, -2).unsqueeze(-1)
@@ -28,7 +28,9 @@ def barankin_matrix(in_flow_model, gamma, theta_test, parameter_name: str, searc
     else:
         _nll_test_point_matrix = nll_test_point_matrix + torch.permute(nll_test_point_matrix, [0, 2, 1])
         delta_nll = 2 * nll_base - _nll_test_point_matrix
-    return torch.exp(delta_nll)
+    a = torch.exp(delta_nll)
+
+    return a
 
 
 def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=4096, max_test_points=30,
@@ -117,8 +119,16 @@ def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, tr
             past = bb_info * (count / (count + _bb_info_i.shape[0]))
             bb_info = future + past  # Average
             count += _bb_info_i.shape[0]
+        ###########################
+        # Filter TP
+        ###########################
+        above_one = bb_info.diag() > 1
+        NFTP = torch.sum(above_one)
+        bb_info = bb_info[above_one.reshape([-1, 1]) * above_one.reshape([1, -1])].reshape(
+            [NFTP, NFTP])
 
         bb_info_inv = torch.linalg.inv(bb_info - torch.ones_like(bb_info))
+        test_points = test_points[above_one, :]
         tau_vector = (test_points - kwargs[parameter_name]).double()
     return bb_info_inv, tau_vector, bb_info, search_landscape, test_points_search, test_points
 

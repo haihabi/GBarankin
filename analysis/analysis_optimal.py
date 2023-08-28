@@ -48,10 +48,10 @@ def main():
     # user_name = "HVH"
     apply_trimming = False
     use_ref_test_points = True
-    theta_value = np.pi / 10
-    n_samples2generate = 16 * 2
+    theta_value = np.asarray([-np.pi / 3, np.pi / 3])
+    n_samples2generate = 64000 * 8
     metric_list = pru.MetricLister()
-    for snr in constants.SNR_POINTS:
+    for snr in [6]:
         sm = build_signal_model(run_param, snr)
         flow_opt = sm.get_optimal_flow_model()
         crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value)
@@ -60,20 +60,35 @@ def main():
             test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
         else:
             test_points = None
-
-        gbarankin, gbb, search_landscape, test_points_search, test_points = generative_bound.generative_barankin_bound(
+        print(test_points.shape)
+        gbarankin, gbb, search_landscape, test_points_search, test_points_final = generative_bound.generative_barankin_bound(
             flow_opt, n_samples2generate,
             test_points=test_points,
             parameter_name=constants.DOAS,
             doas=torch.tensor([theta_value]).to(
                 pru.get_working_device()).reshape(
                 [1, -1]).float())
+        print("a")
+        index_list = []
+        for i in range(test_points_final.shape[0]):
+            j = torch.where(torch.abs(test_points_final[i, :] - test_points).sum(axis=1) == 0)[0].item()
+            index_list.append((i, j))
 
-        metric_list.add_value(gbarankin=gbarankin.item(),
+        bb_compare = torch.zeros_like(test_points_final)
+        for i, j in index_list:
+            bb_compare[i, i] = bb_matrix[j, j]
+            for ii, jj in index_list:
+                if i != ii:
+                    bb_compare[i, ii] = bb_matrix[j, jj]
+                    bb_compare[ii, i] = bb_matrix[jj, j]
+
+        print(100 * np.linalg.norm(gbb.cpu().numpy() - bb_compare.cpu().numpy()) / np.linalg.norm(
+            bb_compare.cpu().numpy()))
+        metric_list.add_value(gbarankin=torch.trace(gbarankin).item(),
                               # gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
                               # gbarankin_ntp=gbarankin_ntp.item(),
-                              crb=crb.flatten(),
-                              bb_bound=bb_bound.flatten(),
+                              crb=np.trace(crb),
+                              bb_bound=np.trace(bb_bound).item(),
                               mle_mse=mle_mse,
                               snr=snr)
         metric_list.print_last()

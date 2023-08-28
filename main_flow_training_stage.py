@@ -49,13 +49,13 @@ def init_config() -> pru.ConfigReader:
     # 2.
     _cr.add_parameter("m_sensors", type=int, default=20)
     _cr.add_parameter("n_snapshots", type=int, default=5)
-    _cr.add_parameter("k_targets", type=int, default=1)
+    _cr.add_parameter("k_targets", type=int, default=2)
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
-    _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
+    _cr.add_parameter("signal_type", type=str, default="CorrelatedComplexGaussian", enum=signal_model.SignalType)
     _cr.add_parameter("noise_type", type=str, default="Uncorrelated", enum=signal_model.NoiseMatrix)
-    _cr.add_parameter("array_perturbed_scale", type=float, default=0.3)
+    _cr.add_parameter("array_perturbed_scale", type=float, default=0.0)
     _cr.add_parameter("snr", type=float, default=None)
     ###############################################
     # Dataset Parameters
@@ -187,7 +187,6 @@ if __name__ == '__main__':
 
     snr_list = constants.SNR_POINTS if _run_parameters.snr is None else [_run_parameters.snr]
     for snr in constants.SNR_POINTS:
-        # try:
         wandb.init(project=C.PROJECT,
                    dir=_run_parameters.base_log_folder,
                    group=group_name,
@@ -195,6 +194,3 @@ if __name__ == '__main__':
         wandb.config.update(cr.get_user_arguments())  # adds all of the arguments as config variables®
         train_model(_run_parameters, _run_log_folder, snr)
         wandb.finish()
-    # except Exception as e:
-    #     print(e)
-    #     wandb.finish()

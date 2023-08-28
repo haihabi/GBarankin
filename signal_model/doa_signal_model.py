@@ -15,6 +15,7 @@ from doatools.utils.math import randcn
 
 class SignalType(Enum):
     ComplexGaussian = 0
+    CorrelatedComplexGaussian = 2
     QAM4 = 1
 
 
@@ -57,8 +58,14 @@ class DOASignalModel:
         self.array = model.UniformLinearArray(m_sensors, self.d0)
         self.signal_type = signal_type
         self.noise_type = noise_type
+        self.signal_matrix = np.eye(k_targets) * DOASignalModel.POWER_SOURCE
         if signal_type == SignalType.ComplexGaussian:
             self.source_signal = model.ComplexStochasticSignal(k_targets, DOASignalModel.POWER_SOURCE)
+        elif signal_type == SignalType.CorrelatedComplexGaussian:
+            D = np.eye(k_targets) * DOASignalModel.POWER_SOURCE
+            L = np.tril(0.9 * randcn([k_targets, k_targets]), k=-1) + np.eye(k_targets)
+            self.signal_matrix = (L @ D @ L.T.conj()).astype("complex64")
+            self.source_signal = model.ComplexStochasticSignal(k_targets, self.signal_matrix)
         elif signal_type == SignalType.QAM4:
             self.source_signal = model.ComplexStochasticSignal(k_targets, DOASignalModel.POWER_SOURCE)
         else:
@@ -68,7 +75,7 @@ class DOASignalModel:
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
         elif noise_type == NoiseMatrix.Correlated:
             D = np.eye(self.array.size) * self.power_noise
-            L = np.tril(randcn([self.array.size, self.array.size]), k=-1) + np.eye(self.array.size)
+            L = np.tril(0.1 * randcn([self.array.size, self.array.size]), k=-1) + np.eye(self.array.size)
             self.noise_matrix = (L @ D @ L.T.conj()).astype("complex64")
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
         else:
@@ -80,16 +87,26 @@ class DOASignalModel:
     def save_model(self, folder):
         with open(os.path.join(folder, "signal_model.pkl"), 'wb') as file:
             # A new file will be created
-            pickle.dump({"noise_matrix": self.noise_matrix}, file)
+            pickle.dump({"noise_matrix": self.noise_matrix,
+                         "signal_matrix": self.signal_matrix}, file)
 
     def load_model(self, folder):
         pass
 
-    def mse_mle(self, in_sources, n_repeats=300):
-        sources = model.FarField1DSourcePlacement(
-            [-np.pi / 10]
+    @staticmethod
+    def build_sources(in_theta):
+        if np.isscalar(in_theta):
+            in_theta = [in_theta]
 
+        sources = model.FarField1DSourcePlacement(
+            in_theta
         )
+        return sources
+
+    def mse_mle(self, in_sources, n_repeats=300):
+        sources = self.build_sources(in_sources)
+        if sources.size != self.k_targets:
+            raise Exception("Mismatch in number of sources")
         cur_mse = 0
         estimator = estimation.RootMUSIC1D(self.wavelength)
         for r in range(n_repeats):
@@ -110,14 +127,11 @@ class DOASignalModel:
         return cur_mse / n_repeats
 
     def compute_reference_bound(self, in_theta):
-        sources = model.FarField1DSourcePlacement(
-            [in_theta]
-
-        )
-        crb, _ = perf.crb_stouc_farfield_1d(self.array, sources, self.wavelength, DOASignalModel.POWER_SOURCE,
+        sources = self.build_sources(in_theta)
+        crb, _ = perf.crb_stouc_farfield_1d(self.array, sources, self.wavelength, self.signal_matrix,
                                             self.power_noise, self.n_snapshots)
         bb_bound, bb_matrix, test_points = perf.barankin_stouc_farfield_1d(self.array, sources, self.wavelength,
-                                                                           DOASignalModel.POWER_SOURCE,
+                                                                           self.signal_matrix,
                                                                            self.noise_matrix, self.n_snapshots)
         return crb, bb_bound, bb_matrix, test_points
 
@@ -130,9 +144,7 @@ class DOASignalModel:
 
         doa_optimal_flow = flows.DOAFlow(self.n_snapshots, self.m_sensors, self.k_targets, self.wavelength,
                                          nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
-                                         signal_covariance_matrix=torch.diag(
-                                             torch.diag(torch.ones(self.k_targets, self.k_targets))).to(
-                                             pru.get_working_device()).float() + 0 * 1j,
+                                         signal_covariance_matrix=self.signal_matrix,
                                          noise_covariance_matrix=self.noise_matrix,
                                          n_flow_layer=0)
         return doa_optimal_flow.to(pru.get_working_device())

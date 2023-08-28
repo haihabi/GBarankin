@@ -90,7 +90,6 @@ class DOAFlow(nfp.NormalizingFlowModel):
         self.flows = [nfp.flows.ToReal(),
                       nfp.flows.Tensor2Vector([n_snapshots, m_sensors, 2])]
 
-        # add_flow_step(self.flows, n_flow_layer, [n_snapshots * m_sensors * 2], n_snapshots, m_sensors, is_complex=False)
         add_flow_step(self.flows, n_flow_layer, [n_snapshots * m_sensors * 2], n_snapshots, m_sensors, is_complex=True)
         self.flows.extend([
             nfp.flows.Vector2Tensor([n_snapshots, m_sensors, 2]),
