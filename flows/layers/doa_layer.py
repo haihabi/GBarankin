@@ -59,7 +59,7 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
 
         l_matrix = torch.linalg.cholesky(R)
         l_matrix_inv = torch.linalg.inv(l_matrix)
-        return (l_matrix_inv @ x.unsqueeze(dim=-1)).squeeze(dim=-1), x.shape[1] * torch.log(
+        return (l_matrix_inv.unsqueeze(dim=1) @ x.unsqueeze(dim=-1)).squeeze(dim=-1), x.shape[1] * torch.log(
             torch.abs(torch.linalg.det(l_matrix_inv)))
 
     def backward(self, z, **kwargs):

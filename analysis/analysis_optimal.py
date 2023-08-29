@@ -68,13 +68,12 @@ def main():
             doas=torch.tensor([theta_value]).to(
                 pru.get_working_device()).reshape(
                 [1, -1]).float())
-        print("a")
         index_list = []
         for i in range(test_points_final.shape[0]):
             j = torch.where(torch.abs(test_points_final[i, :] - test_points).sum(axis=1) == 0)[0].item()
             index_list.append((i, j))
 
-        bb_compare = torch.zeros_like(test_points_final)
+        bb_compare = torch.zeros_like(gbb)
         for i, j in index_list:
             bb_compare[i, i] = bb_matrix[j, j]
             for ii, jj in index_list:

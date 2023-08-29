@@ -186,7 +186,7 @@ if __name__ == '__main__':
     group_name = random_name if _run_parameters.group_name is None else _run_parameters.group_name
 
     snr_list = constants.SNR_POINTS if _run_parameters.snr is None else [_run_parameters.snr]
-    for snr in constants.SNR_POINTS:
+    for snr in [-4, 10, 21]:
         wandb.init(project=C.PROJECT,
                    dir=_run_parameters.base_log_folder,
                    group=group_name,
