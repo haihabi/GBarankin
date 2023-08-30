@@ -51,7 +51,9 @@ def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=4
     for gamma in tqdm(dl):
         gamma = gamma.to(pru.get_working_device())
         nll_base = in_flow_model.nll(gamma, **in_param_dict)
-        nll_search = [in_flow_model.nll(gamma, **{"doas": tp.reshape([-1, 1])}) for tp in base_array]
+        nll_search = [in_flow_model.nll(gamma, **{"doas": tp.reshape([-1, 1]),
+                                                  **{k: v for k, v in in_param_dict.items() if k != "doas"}}) for tp in
+                      base_array]
         nll_search = torch.stack(nll_search, axis=0).T
         delta_nll = 2 * nll_base.unsqueeze(dim=-1) - 2 * nll_search
         bounded = torch.exp(delta_nll)
@@ -69,11 +71,12 @@ def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=4
     if m > 0:
         bm_matrix = bm_matrix[index]
         test_points_search = base_array[index]
-        search_landscape = 1 / bm_matrix
+        delta_tp = (test_points_search - in_kwargs['doas']).flatten()
+        search_landscape = delta_tp ** 2 / (bm_matrix - 1)
         search_landscape = search_landscape.cpu().numpy()
 
         peaks = scipy.signal.find_peaks(search_landscape)[0]
-        peaks = peaks[np.flip(np.argsort(search_landscape[peaks]))][:maximal_tp]
+
         if len(peaks) > 1:
             sel = test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1])
             pos_delta = test_points_search.reshape([1, -1])[:, peaks + 1].reshape([-1, 1])
@@ -82,6 +85,7 @@ def search_test_points(in_flow_model, in_samples_data, batch_size, search_size=4
                                               torch.isclose(torch.abs(neg_delta - sel), delta, rtol=1,
                                                             atol=delta)).cpu().numpy().flatten()
             peaks = peaks[index_to_keep]
+        peaks = peaks[np.flip(np.argsort(search_landscape[peaks]))][:maximal_tp]
         if len(peaks) > 0:
             return test_points_search.reshape([1, -1])[:, peaks].reshape([-1, 1]), search_landscape, test_points_search
         else:

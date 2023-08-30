@@ -49,16 +49,19 @@ class DOASignalModel:
     def __init__(self, m_sensors, n_snapshots, k_targets, in_snr, wavelength=1.0,
                  signal_type: SignalType = SignalType.ComplexGaussian,
                  noise_type: NoiseMatrix = NoiseMatrix.Uncorrelated,
-                 array_perturbed_scale: float = 0.0):
+                 array_perturbed_scale: float = 0.0,
+                 is_multiple_snr=False,
+                 snr_min=-30,
+                 snr_max=10):
         self.d0 = wavelength / 2
         self.wavelength = wavelength
         self.n_snapshots = n_snapshots
         self.m_sensors = m_sensors
-        self.power_noise = DOASignalModel.POWER_SOURCE / (10 ** (in_snr / 10))
+
         self.array = model.UniformLinearArray(m_sensors, self.d0)
         self.signal_type = signal_type
         self.noise_type = noise_type
-        self.signal_matrix = np.eye(k_targets) * DOASignalModel.POWER_SOURCE
+        self.signal_matrix = (np.eye(k_targets) * DOASignalModel.POWER_SOURCE).astype("complex64")
         if signal_type == SignalType.ComplexGaussian:
             self.source_signal = model.ComplexStochasticSignal(k_targets, DOASignalModel.POWER_SOURCE)
         elif signal_type == SignalType.CorrelatedComplexGaussian:
@@ -70,6 +73,11 @@ class DOASignalModel:
             self.source_signal = model.ComplexStochasticSignal(k_targets, DOASignalModel.POWER_SOURCE)
         else:
             raise Exception("")
+        self.is_multiple_snr = is_multiple_snr
+        if self.is_multiple_snr:
+            self.power_noise = 1
+        else:
+            self.power_noise = DOASignalModel.POWER_SOURCE / (10 ** (in_snr / 10))
         if noise_type == NoiseMatrix.Uncorrelated:
             self.noise_matrix = (np.eye(self.array.size) * self.power_noise + 0 * 1j).astype("complex64")
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
@@ -83,6 +91,9 @@ class DOASignalModel:
 
         self.array_perturbed_scale = array_perturbed_scale
         self.k_targets = k_targets
+
+        self.snr_min = snr_min
+        self.snr_max = snr_max
 
     def save_model(self, folder):
         with open(os.path.join(folder, "signal_model.pkl"), 'wb') as file:
@@ -126,18 +137,23 @@ class DOASignalModel:
             cur_mse += np.mean((estimates.locations - sources.locations) ** 2)
         return cur_mse / n_repeats
 
-    def compute_reference_bound(self, in_theta):
+    def compute_reference_bound(self, in_theta, in_snr=None):
+        if self.is_multiple_snr and in_snr is None:
+            raise Exception("")
+        elif self.is_multiple_snr:
+            noise_scale = np.asarray(DOASignalModel.POWER_SOURCE / (10 ** (in_snr / 10))).astype("float32")
+        else:
+            noise_scale = 1
         sources = self.build_sources(in_theta)
         crb, _ = perf.crb_stouc_farfield_1d(self.array, sources, self.wavelength, self.signal_matrix,
-                                            self.power_noise, self.n_snapshots)
+                                            self.power_noise * noise_scale, self.n_snapshots)
         bb_bound, bb_matrix, test_points = perf.barankin_stouc_farfield_1d(self.array, sources, self.wavelength,
                                                                            self.signal_matrix,
-                                                                           self.noise_matrix, self.n_snapshots)
+                                                                           self.noise_matrix * noise_scale,
+                                                                           self.n_snapshots)
         return crb, bb_bound, bb_matrix, test_points
 
     def get_optimal_flow_model(self):
-        # if self.signal_type != SignalType.ComplexGaussian:
-        #     return None
         locations = torch.Tensor(self.array._locations)
         if locations.shape[1] == 1:
             locations = torch.cat([locations, torch.zeros_like(locations)], dim=-1)
@@ -146,13 +162,18 @@ class DOASignalModel:
                                          nominal_sensors_locations=locations.to(pru.get_working_device()).float(),
                                          signal_covariance_matrix=self.signal_matrix,
                                          noise_covariance_matrix=self.noise_matrix,
-                                         n_flow_layer=0)
+                                         n_flow_layer=0,
+                                         is_multiple_snrs=self.is_multiple_snr)
         return doa_optimal_flow.to(pru.get_working_device())
 
     def generate_dataset(self, number_of_samples, transform=None):
         labels_list = []
         data_list = []
+        noise_scale = 1
         for i in range(number_of_samples):
+            if self.is_multiple_snr:
+                snr = self.snr_min + (self.snr_max - self.snr_min) * np.random.rand(1)
+                noise_scale = np.sqrt(DOASignalModel.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
             if self.array_perturbed_scale > 0:
                 self.array = self.array.get_perturbed_copy(
                     {'location_errors': (np.random.randn(self.array.size, 1) * self.array_perturbed_scale, True)})
@@ -165,7 +186,7 @@ class DOASignalModel:
             A = self.array.steering_matrix(sources, self.wavelength)
             S = self.source_signal.emit(self.n_snapshots)
             N = self.noise_signal.emit(self.n_snapshots)
-            Y = A @ S + N
-            labels_list.append(doas.astype("float32"))
+            Y = A @ S + N * noise_scale
+            labels_list.append([doas.astype("float32"), noise_scale])
             data_list.append(Y.T.astype("complex64"))
         return pru.torch.NumpyDataset(data_list, labels_list, transform=transform)

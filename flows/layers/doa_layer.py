@@ -14,7 +14,8 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
                  wavelength,
                  nominal_sensors_locations,
                  signal_covariance_matrix=None,
-                 noise_covariance_matrix=None):
+                 noise_covariance_matrix=None,
+                 is_multiple_snrs=False):
         super().__init__()
         self.k_target = k_target
         self.m_sensors = m_sensors
@@ -45,17 +46,21 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
     def noise_covariance_matrix(self):
         return self._noise_covariance_matrix()
 
-    def compute_r_matrix(self, in_a_matrix):
+    def compute_r_matrix(self, in_a_matrix, noise_scale):
+        noise_scale = noise_scale.reshape([-1, 1, 1]) ** 2
         return ((in_a_matrix @ self.signal_covariance_matrix) @ (
-            torch.permute(in_a_matrix, [0, 2, 1]).conj())) + self.noise_covariance_matrix.unsqueeze(dim=0)
+            torch.permute(in_a_matrix, [0, 2, 1]).conj())) + self.noise_covariance_matrix.unsqueeze(
+            dim=0) * torch.complex(noise_scale, torch.zeros_like(noise_scale))
 
     def forward(self, x, **kwargs):
         locations = kwargs[constants.DOAS]
         if x.shape[0] != locations.shape[0] and locations.shape[0] != 1:
             pru.logger.critical("Mismatch in number of targets")
 
+        ns = kwargs[constants.NS]
+
         A = self.steering_matrix(locations)
-        R = self.compute_r_matrix(A)
+        R = self.compute_r_matrix(A, ns)
 
         l_matrix = torch.linalg.cholesky(R)
         l_matrix_inv = torch.linalg.inv(l_matrix)
@@ -66,8 +71,9 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         locations = kwargs[constants.DOAS]
         if z.shape[0] != locations.shape[0] and locations.shape[0] != 1:
             pru.logger.critical("Mismatch in number of targets")
+        ns = kwargs[constants.NS]
         A = self.steering_matrix(locations)
-        R = self.compute_r_matrix(A)
+        R = self.compute_r_matrix(A, ns)
 
         L = torch.linalg.cholesky(R)
         return (L.unsqueeze(dim=1) @ z.unsqueeze(dim=-1)).squeeze(dim=-1), z.shape[1] * torch.log(
