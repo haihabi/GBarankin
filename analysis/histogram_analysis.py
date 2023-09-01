@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 
 import constants
@@ -11,22 +9,37 @@ import flows
 import torch
 import pyresearchutils as pru
 import generative_bound
+from analysis.helpers import relative_error, align_bb_matrix
 
 
-def relative_error(in_est, in_ref):
-    return np.linalg.norm(in_est - in_ref) / np.linalg.norm(in_ref)
-
-
-def run_trails(in_flow_model, in_n_samples, in_m_trails, in_test_points, in_sources, ref_barankin, ref_bb):
+def run_trails(in_flow_model, in_n_samples, in_m_trails, in_test_points, in_sources, ref_barankin_bound, ref_bm):
     results_list = []
     for i in range(in_m_trails):
-        gbarankin, gbb, _, _ = generative_bound.generative_barankin_bound(in_flow_model, in_n_samples, in_test_points,
-                                                                          parameter_name=constants.DOAS,
-                                                                          doas=torch.tensor(in_sources).to(
-                                                                              pru.get_working_device()).reshape(
-                                                                              [1, -1]).float())
-        re_bb = relative_error(gbarankin.cpu().numpy(), ref_barankin)
-        re_bm = relative_error(gbb.cpu().numpy(), ref_bb)
+        gbb, gbm, _, _, test_points_selected = generative_bound.generative_barankin_bound(in_flow_model,
+                                                                                          in_n_samples,
+                                                                                          in_test_points,
+                                                                                          parameter_name=constants.DOAS,
+                                                                                          doas=torch.tensor(
+                                                                                              in_sources).to(
+                                                                                              pru.get_working_device()).reshape(
+                                                                                              [1, -1]).float())
+
+        # delta_tp = in_test_points - sources.locations[0]
+        # # min_delta_tp=(delta_tp.min())**2
+        # D = ref_bb - np.ones(ref_bb.shape)
+        # v, u = np.linalg.eig(D)
+        # plt.semilogy(v, "o", label="BB")
+        # D = gbb.cpu().numpy() - np.ones(gbb.cpu().numpy().shape)
+        # v, u = np.linalg.eig(D)
+        # print(v, gbb.shape)
+        # plt.semilogy(v, "o", label="GBB")
+        # plt.grid()
+        # plt.legend()
+        # plt.show()
+        ref_bm_compare = align_bb_matrix(in_test_points, test_points_selected, ref_bm, gbm)
+        re_bb = relative_error(gbb.cpu().numpy(), ref_barankin_bound)
+        re_bm = relative_error(gbm.cpu().numpy(), ref_bm_compare.cpu().numpy())
+        print(re_bb, re_bm, ref_barankin_bound, gbb.cpu().numpy())
         results_list.append([re_bb, re_bm])
     return np.asarray(results_list)
 
@@ -38,14 +51,14 @@ wavelength = 1.0  # normalized
 d0 = wavelength / 2
 m_sensors = 20
 k_targets = 1
-n_samples2generate = 512
-n_snapshots = 10
-m_trails = 1000
+n_samples2generate = 64000 * 8
+n_snapshots = 5
+m_trails = 100
 # Create a 12-element ULA.
 ula = model.UniformLinearArray(m_sensors, d0)
 # Place 8 sources uniformly within (-pi/3, pi/4)
 sources = model.FarField1DSourcePlacement(
-    [-np.pi / 10]
+    [np.pi / 4]
 
 )
 # All sources share the same power.
@@ -66,7 +79,7 @@ snrs = constants.SNR_POINTS
 # crbs_det = np.zeros((len(snrs),))
 # crbs_stouc = np.zeros((len(snrs),))
 # gcrbs_stouc = np.zeros((len(snrs),))
-snr = -20
+snr = -21
 # for i, snr in enumerate(snrs):
 power_noise = power_source / (10 ** (snr / 10))
 noise_signal = model.ComplexStochasticSignal(ula.size, power_noise)

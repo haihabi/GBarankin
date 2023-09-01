@@ -102,7 +102,10 @@ class DOASignalModel:
                          "signal_matrix": self.signal_matrix}, file)
 
     def load_model(self, folder):
-        pass
+        with open(folder, "rb") as file:
+            data = pickle.load(file)
+        self.noise_matrix = data["noise_matrix"]
+        self.signal_matrix = data["signal_matrix"]
 
     @staticmethod
     def build_sources(in_theta):

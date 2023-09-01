@@ -19,6 +19,7 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         super().__init__()
         self.k_target = k_target
         self.m_sensors = m_sensors
+        self.is_multiple_snrs = is_multiple_snrs
         self.sensor_location = nn.Parameter(nominal_sensors_locations,
                                             requires_grad=False)
         self.s = 2 * np.pi / wavelength
@@ -56,11 +57,18 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         locations = kwargs[constants.DOAS]
         if x.shape[0] != locations.shape[0] and locations.shape[0] != 1:
             pru.logger.critical("Mismatch in number of targets")
-
-        ns = kwargs[constants.NS]
+        if self.is_multiple_snrs:
+            ns = kwargs[constants.NS]
+        else:
+            ns = torch.ones(1, device=x.device)
 
         A = self.steering_matrix(locations)
         R = self.compute_r_matrix(A, ns)
+
+        # eval, evect = torch.linalg.eig(R)
+        # diag_batch = torch.vmap(torch.diag)
+        # D = diag_batch(torch.pow(eval, -0.5))
+        # l_matrix_inv = evect @ D @ torch.permute(evect, [0, 2, 1]).conj()
 
         l_matrix = torch.linalg.cholesky(R)
         l_matrix_inv = torch.linalg.inv(l_matrix)
@@ -71,10 +79,18 @@ class DOALayer(nfp.ConditionalBaseFlowLayer):
         locations = kwargs[constants.DOAS]
         if z.shape[0] != locations.shape[0] and locations.shape[0] != 1:
             pru.logger.critical("Mismatch in number of targets")
-        ns = kwargs[constants.NS]
+        if self.is_multiple_snrs:
+            ns = kwargs[constants.NS]
+        else:
+            ns = torch.ones(1, device=z.device)
         A = self.steering_matrix(locations)
         R = self.compute_r_matrix(A, ns)
 
         L = torch.linalg.cholesky(R)
+        # eval, evect = torch.linalg.eig(R)
+        # diag_batch = torch.vmap(torch.diag)
+        # D = diag_batch(torch.pow(eval, 0.5))
+        # L = evect @ D @ torch.permute(evect, [0, 2, 1]).conj()
+
         return (L.unsqueeze(dim=1) @ z.unsqueeze(dim=-1)).squeeze(dim=-1), z.shape[1] * torch.log(
             torch.abs(torch.linalg.det(L)))

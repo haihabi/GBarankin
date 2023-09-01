@@ -5,54 +5,8 @@ import torch
 import pyresearchutils as pru
 import generative_bound
 import signal_model
+from analysis.helpers import get_timming_function, plot_tp_search, rmse_db
 from main_flow_training_stage import init_config, build_flow_model, build_signal_model
-
-
-def rmse_db(x):
-    return np.sqrt(x) * 180 / np.pi
-
-
-def plot_tp_search(in_data, in_legend, in_theta):
-    for i in range(len(in_data)):
-        search_landscape, test_point, selet_test_points = in_data[i]
-        test_point = test_point.cpu().numpy()
-        name, color = in_legend[i]
-        delta_filter = np.diff(test_point - in_theta)
-        loc = np.where(np.logical_not(np.isclose(np.min(delta_filter), delta_filter, atol=np.min(delta_filter))))[0]
-        loc = np.concatenate([np.zeros(1), loc + 1, np.ones(1) * len(test_point)])
-        loc = loc.astype("int")
-        ###############################
-        # Apply Transfor
-        ##############################
-        alpha = (test_point - in_theta) ** 2 / (1 / search_landscape - 1 + 1e-6)
-        for i in range(len(loc) - 1):
-            plt.semilogy(test_point[loc[i]:loc[i + 1]] - in_theta,
-                         alpha[loc[i]:loc[i + 1]],
-                         color,
-                         label=name)
-
-    plt.xlabel(r"$\psi-\theta$")
-    plt.ylabel(r"$\alpha$")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-
-def get_timming_function(is_apply_trimming, in_sm):
-    adaptive_trimming = None
-    if is_apply_trimming:
-        data = in_sm.generate_dataset(10000)
-        data_np = np.stack(data.data, axis=0)
-        data_np = data_np.reshape([10000, -1])
-        mean_vec = np.mean(data_np, axis=0)
-        data_np_norm = data_np - mean_vec
-        max_norm = np.linalg.norm(data_np_norm, axis=-1).max()
-
-        adaptive_trimming = generative_bound.AdaptiveTrimming(
-            generative_bound.TrimmingParameters(mean_vec, max_norm, 0),
-            generative_bound.TrimmingType.MAX)
-        adaptive_trimming.to(pru.get_working_device())
-    return adaptive_trimming
 
 
 def main():
@@ -62,13 +16,14 @@ def main():
     group_name = "thomas_boyle"
     # group_name = "janice_sullivan"
     group_name = "brandi_mccammon"
-    group_name = "linda_lambert_-30_10"
+    group_name = "linda_lambert_-30_10"  # Pertubation
+    # group_name = "benjamin_ginsberg_-30_10"
     user_name = "HVH"
-    apply_trimming = False
+    apply_trimming = True
     use_ref_test_points = False
     is_multiple_snr = True
     theta_value = np.pi / 10
-    n_samples2generate = 64000*8
+    n_samples2generate = 64000
     metric_list = pru.MetricLister()
 
     if is_multiple_snr:
@@ -79,7 +34,7 @@ def main():
         flow_opt = sm.get_optimal_flow_model()
         pru.load_model_weights(run, flow, f"model_last_{None}.pth")
         adaptive_trimming = get_timming_function(apply_trimming, sm)
-        for snr in constants.SNR_POINTS:
+        for snr in np.linspace(-30, 10, 41):
             crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, in_snr=snr)
             if use_ref_test_points:
                 test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
@@ -87,7 +42,7 @@ def main():
                 test_points = None
 
             noise_scale = np.sqrt(sm.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
-
+            print("Learned")
             gbarankin_ntp, gbb, search_landscape_ntp, test_points_search_ntp, test_points_ntp = generative_bound.generative_barankin_bound(
                 flow, n_samples2generate,
                 test_points=test_points,
@@ -99,7 +54,7 @@ def main():
                     pru.get_working_device()).reshape(
                     [1, -1]).float(),
                 trimming_step=adaptive_trimming)
-
+            print("Optimal")
             gbarankin, gbb, search_landscape, test_points_search, test_points = generative_bound.generative_barankin_bound(
                 flow_opt, n_samples2generate,
                 test_points=test_points,
@@ -110,6 +65,12 @@ def main():
                 noise_scale=torch.tensor([noise_scale]).to(
                     pru.get_working_device()).reshape(
                     [1, -1]).float())
+
+            if False:
+                plot_tp_search([(search_landscape_ntp, test_points_search_ntp, test_points_ntp),
+                                (search_landscape, test_points_search, test_points)], [("Learned", "green"),
+                                                                                       ("Optimal", "red")],
+                               theta_value)
 
             metric_list.add_value(gbarankin=gbarankin.item(),
                                   # gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,

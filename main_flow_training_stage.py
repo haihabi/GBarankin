@@ -35,7 +35,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # CNF Parameters
     ###############################################
-    _cr.add_parameter("n_flow_layer", type=int, default=2)
+    _cr.add_parameter("n_flow_layer", type=int, default=0)
     # _cr.add_parameter("n_layer_inject", type=int, default=1)
     # _cr.add_parameter("n_hidden_inject", type=int, default=16)
     # _cr.add_parameter("inject_scale", type=str, default="false")
@@ -48,14 +48,14 @@ def init_config() -> pru.ConfigReader:
     # 1. Add array type
     # 2.
     _cr.add_parameter("m_sensors", type=int, default=20)
-    _cr.add_parameter("n_snapshots", type=int, default=5)
+    _cr.add_parameter("n_snapshots", type=int, default=1)
     _cr.add_parameter("k_targets", type=int, default=1)
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
     _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
     _cr.add_parameter("noise_type", type=str, default="Uncorrelated", enum=signal_model.NoiseMatrix)
-    _cr.add_parameter("array_perturbed_scale", type=float, default=0.3)
+    _cr.add_parameter("array_perturbed_scale", type=float, default=0.0)
     _cr.add_parameter("snr", type=float, default=None)
     _cr.add_parameter("snr_min", type=float, default=-30)
     _cr.add_parameter("snr_max", type=float, default=10)
@@ -80,7 +80,8 @@ def build_flow_model(in_run_parameters, in_sm):
     flow = flows.DOAFlow(in_run_parameters.n_snapshots, in_run_parameters.m_sensors, in_run_parameters.k_targets,
                          in_run_parameters.wavelength,
                          nominal_sensors_locations=nominal_locations if in_run_parameters.is_sensor_location_known else None,
-                         n_flow_layer=in_run_parameters.n_flow_layer)
+                         n_flow_layer=in_run_parameters.n_flow_layer,
+                         is_multiple_snrs=in_run_parameters.is_multiple_snrs)
     flow.to(pru.get_working_device())
     flow_ema = nfp.FlowEMA(flow)
     return flow, flow_ema
