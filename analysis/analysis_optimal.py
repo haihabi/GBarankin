@@ -6,7 +6,7 @@ import pyresearchutils as pru
 import generative_bound
 import signal_model
 from main_flow_training_stage import init_config, build_signal_model
-from analysis.helpers import rmse_db, plot_tp_search
+from analysis.helpers import rmse_db, plot_tp_search, compute_noise_scale, align_bb_matrix
 
 
 def main():
@@ -19,13 +19,14 @@ def main():
     # user_name = "HVH"
     apply_trimming = False
     use_ref_test_points = True
-    theta_value = np.asarray([-np.pi / 3, np.pi / 3])
+    theta_value = np.asarray([-np.pi / 3])
     n_samples2generate = 64000 * 8
     metric_list = pru.MetricLister()
     for snr in [6]:
         sm = build_signal_model(run_param, snr)
         flow_opt = sm.get_optimal_flow_model()
-        crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value)
+        crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, snr)
+        noise_scale = compute_noise_scale(snr, sm.POWER_SOURCE)
         mle_mse = sm.mse_mle(theta_value)
         if use_ref_test_points:
             test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
@@ -38,22 +39,17 @@ def main():
             parameter_name=constants.DOAS,
             doas=torch.tensor([theta_value]).to(
                 pru.get_working_device()).reshape(
+                [1, -1]).float(),
+            noise_scale=torch.tensor([noise_scale]).to(
+                pru.get_working_device()).reshape(
                 [1, -1]).float())
-        index_list = []
-        for i in range(test_points_final.shape[0]):
-            j = torch.where(torch.abs(test_points_final[i, :] - test_points).sum(axis=1) == 0)[0].item()
-            index_list.append((i, j))
 
-        bb_compare = torch.zeros_like(gbb)
-        for i, j in index_list:
-            bb_compare[i, i] = bb_matrix[j, j]
-            for ii, jj in index_list:
-                if i != ii:
-                    bb_compare[i, ii] = bb_matrix[j, jj]
-                    bb_compare[ii, i] = bb_matrix[jj, j]
-
+        bb_compare = align_bb_matrix(test_points, test_points_final, bb_matrix, gbb)
         print(100 * np.linalg.norm(gbb.cpu().numpy() - bb_compare.cpu().numpy()) / np.linalg.norm(
             bb_compare.cpu().numpy()))
+
+        print(100 * np.linalg.norm(gbarankin.cpu().numpy() - bb_bound) / np.linalg.norm(
+            bb_bound))
         metric_list.add_value(gbarankin=torch.trace(gbarankin).item(),
                               # gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
                               # gbarankin_ntp=gbarankin_ntp.item(),

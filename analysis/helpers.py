@@ -6,6 +6,8 @@ import pyresearchutils as pru
 import torch
 
 
+def compute_noise_scale(snr,source_power):
+    return np.sqrt(source_power/ (10 ** (snr / 10))).astype("float32")
 def align_bb_matrix(original_tp, final_tp, original_bb, final_bb):
     index_list = []
     for i in range(final_tp.shape[0]):

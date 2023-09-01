@@ -23,7 +23,7 @@ def main():
     use_ref_test_points = False
     is_multiple_snr = True
     theta_value = np.pi / 10
-    n_samples2generate = 64000
+    n_samples2generate = 64000 * 8
     metric_list = pru.MetricLister()
 
     if is_multiple_snr:
@@ -34,7 +34,7 @@ def main():
         flow_opt = sm.get_optimal_flow_model()
         pru.load_model_weights(run, flow, f"model_last_{None}.pth")
         adaptive_trimming = get_timming_function(apply_trimming, sm)
-        for snr in np.linspace(-30, 10, 41):
+        for snr in np.linspace(-30, 10, 81):
             crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, in_snr=snr)
             if use_ref_test_points:
                 test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T

@@ -83,7 +83,7 @@ class DOASignalModel:
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
         elif noise_type == NoiseMatrix.Correlated:
             D = np.eye(self.array.size) * self.power_noise
-            L = np.tril(0.1 * randcn([self.array.size, self.array.size]), k=-1) + np.eye(self.array.size)
+            L = np.tril(0.5 * randcn([self.array.size, self.array.size]), k=-1) + np.eye(self.array.size)
             self.noise_matrix = (L @ D @ L.T.conj()).astype("complex64")
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
         else:

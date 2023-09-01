@@ -17,7 +17,7 @@ def main():
     use_ref_test_points = True
     theta_value = np.asarray([-np.pi / 4])
     n_samples2generate = 64000 * 8
-    n_trys = 100
+    n_trys = 1000
     for snr in [6, -1, -21]:
         metric_list = pru.MetricLister()
         sm = build_signal_model(run_param, snr)

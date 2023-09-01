@@ -16,7 +16,7 @@ for snr in [6, -1, -21]:
 
     count, x = np.histogram(data.data["re_bm"], bins=20, density=True)
 
-    plt.semilogx(x[:-1] / 100, count, "--x", color=color[snr],
+    plt.semilogx(x[:-1] , count, "--x", color=color[snr],
                  label=f"SNR={snr}[dB] ({legned_type_dict[snr]})")
 
 plt.legend(fontsize=FONTSIZE)
@@ -32,7 +32,7 @@ for snr in [6, -1, -21]:
 
     count, x = np.histogram(data.data["re_bb"], bins=20, density=True)
 
-    plt.semilogx(x[:-1] / 100, count, "--x", color=color[snr], label=f"SNR={snr}[dB] ({legned_type_dict[snr]})")
+    plt.semilogx(x[:-1] , count, "--x", color=color[snr], label=f"SNR={snr}[dB] ({legned_type_dict[snr]})")
 plt.legend(fontsize=FONTSIZE)
 plt.grid()
 plt.xlabel("RE", fontsize=FONTSIZE)

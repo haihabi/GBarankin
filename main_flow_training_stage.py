@@ -27,7 +27,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("lr", type=float, default=1e-4)
     _cr.add_parameter("min_lr", type=float, default=5e-5)
     _cr.add_parameter("warmup_epoch", type=int, default=2)
-    _cr.add_parameter("weight_decay", type=float, default=1e-4)
+    _cr.add_parameter("weight_decay", type=float, default=0.0)
     _cr.add_parameter("group_name", type=str, default=None)
 
     # _cr.add_parameter("random_padding", type=str, default="false")
@@ -48,13 +48,13 @@ def init_config() -> pru.ConfigReader:
     # 1. Add array type
     # 2.
     _cr.add_parameter("m_sensors", type=int, default=20)
-    _cr.add_parameter("n_snapshots", type=int, default=1)
+    _cr.add_parameter("n_snapshots", type=int, default=5)
     _cr.add_parameter("k_targets", type=int, default=1)
     _cr.add_parameter("in_snr", type=float, default=0)
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
     _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
-    _cr.add_parameter("noise_type", type=str, default="Uncorrelated", enum=signal_model.NoiseMatrix)
+    _cr.add_parameter("noise_type", type=str, default="Correlated", enum=signal_model.NoiseMatrix)
     _cr.add_parameter("array_perturbed_scale", type=float, default=0.0)
     _cr.add_parameter("snr", type=float, default=None)
     _cr.add_parameter("snr_min", type=float, default=-30)
@@ -147,9 +147,10 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     target_signal_covariance_matrix = torch.diag(
         torch.diag(torch.ones(in_run_parameters.k_targets, in_run_parameters.k_targets))).to(
         pru.get_working_device()).float() + 0 * 1j
-    target_noise_covariance_matrix = sm.power_noise * torch.diag(
-        torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
-        pru.get_working_device()).float() + 0 * 1j
+    # target_noise_covariance_matrix = sm.power_noise * torch.diag(
+    #     torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
+    #     pru.get_working_device()).float() + 0 * 1j
+    target_noise_covariance_matrix = torch.tensor(sm.noise_matrix).to(pru.get_working_device())
     mmd_metric = generative_bound.FlowMMD()
     sm.save_model(wandb.run.dir)
     for epoch in tqdm(range(n_epochs)):

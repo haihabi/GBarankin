@@ -32,7 +32,7 @@ def main():
     flow_opt = sm.get_optimal_flow_model()
 
     adaptive_trimming = get_timming_function(apply_trimming, sm)
-    for snr in [3]:
+    for snr in [6, -1, -21]:
         noise_scale = np.sqrt(sm.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
         for theta_value in np.linspace(np.pi / 3, np.pi / 4, 20):
             theta_value = [-theta_value, theta_value]
