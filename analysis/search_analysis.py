@@ -77,11 +77,11 @@ for i, snr in enumerate(snrs):
             [1, -1]).float())
 
     plt.plot(test_points_search_array[0] - theta, search_landscpae[0],
-             label=f"Analytic SNR={snr} ({legned_type_dict[snr]})",
+             label=f"SNR={snr} ({legned_type_dict[snr]})",
              color=color[snr])
-    plt.plot(test_points_search_array_gbb[0].cpu().numpy() - theta, search_landscape_gbb[0], "--",
-             label=f"Generative SNR= SNR={snr} ({legned_type_dict[snr]})",
-             color=color[snr])
+    # plt.plot(test_points_search_array_gbb[0].cpu().numpy() - theta, search_landscape_gbb[0], "--",
+    #          label=f"Generative SNR= SNR={snr} ({legned_type_dict[snr]})",
+    #          color=color[snr])
 plt.grid()
 plt.legend()
 plt.xlabel(r"$\psi-\theta$")

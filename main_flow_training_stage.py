@@ -54,7 +54,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
     _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
-    _cr.add_parameter("noise_type", type=str, default="Correlated", enum=signal_model.NoiseMatrix)
+    _cr.add_parameter("noise_type", type=str, default="Uncorrelated", enum=signal_model.NoiseMatrix)
     _cr.add_parameter("array_perturbed_scale", type=float, default=0.0)
     _cr.add_parameter("snr", type=float, default=None)
     _cr.add_parameter("snr_min", type=float, default=-30)
@@ -136,7 +136,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             return (1 - in_run_parameters.min_lr / in_run_parameters.lr) * math.cos(
                 math.pi * norm_step / (2 * step_left)) + in_run_parameters.min_lr / in_run_parameters.lr
 
-    sch = torch.optim.lr_scheduler.LambdaLR(opt, lr_function)
+    # sch = torch.optim.lr_scheduler.LambdaLR(opt, lr_function)
     n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
     if not _run_parameters.is_multiple_snrs:
         if in_snr < 1:
@@ -170,7 +170,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             loss = flow.nll_mean(x, doas=theta, noise_scale=ns)
             loss.backward()
             opt.step()
-            sch.step()
+            # sch.step()
             # flow_ema.update(flow)
             ma.log(loss=loss.item())
         flow.eval()

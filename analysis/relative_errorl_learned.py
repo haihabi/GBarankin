@@ -13,13 +13,12 @@ def main():
     cr = init_config()
 
     group_name = "vickie_turman_-30_10"  # "vickie_turman_-30_10"
+    group_name = "elsie_slenker_-30_10"  # "vickie_turman_-30_10"
     user_name = "HVH"
     apply_trimming = True
     use_ref_test_points = True
-    is_multiple_snr = True
     # theta_value = np.pi / 10
     n_samples2generate = 64000 * 8
-    metric_list = pru.MetricLister()
 
     run_name = group_name
     run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
@@ -33,9 +32,10 @@ def main():
 
     adaptive_trimming = get_timming_function(apply_trimming, sm)
     for snr in [6, -1, -21]:
+        metric_list = pru.MetricLister()
         noise_scale = np.sqrt(sm.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
-        for theta_value in np.linspace(np.pi / 3, np.pi / 4, 20):
-            theta_value = [-theta_value, theta_value]
+        for theta_value in np.linspace(-np.pi / 4, np.pi / 4, 10):
+            theta_value = [theta_value]
             crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, in_snr=snr)
             if use_ref_test_points:
                 test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
@@ -65,15 +65,15 @@ def main():
                     pru.get_working_device()).reshape(
                     [1, -1]).float())
 
-            gcrb = generative_bound.generative_cramer_rao_bound(flow_opt, n_samples2generate,
-                                                                parameter_name=constants.DOAS,
-                                                                doas=torch.tensor([theta_value]).to(
-                                                                    pru.get_working_device()).reshape(
-                                                                    [1, -1]).float(),
-                                                                noise_scale=torch.tensor([noise_scale]).to(
-                                                                    pru.get_working_device()).reshape(
-                                                                    [1, -1]).float()
-                                                                )
+            # gcrb = generative_bound.generative_cramer_rao_bound(flow_opt, n_samples2generate,
+            #                                                     parameter_name=constants.DOAS,
+            #                                                     doas=torch.tensor([theta_value]).to(
+            #                                                         pru.get_working_device()).reshape(
+            #                                                         [1, -1]).float(),
+            #                                                     noise_scale=torch.tensor([noise_scale]).to(
+            #                                                         pru.get_working_device()).reshape(
+            #                                                         [1, -1]).float()
+            #                                                     )
 
             metric_list.add_value(gbarankin=torch.trace(gbarankin).item(),
                                   re_optimal=relative_error(gbarankin.cpu().numpy(), bb_bound),
@@ -84,7 +84,7 @@ def main():
                                   theta=theta_value,
                                   snr=snr)
             metric_list.print_last()
-    metric_list.save2disk("re_analysis.pkl")
+        metric_list.save2disk(f"re_analysis_{snr}.pkl")
 
 
 if __name__ == '__main__':
