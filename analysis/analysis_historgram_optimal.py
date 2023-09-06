@@ -15,19 +15,21 @@ def main():
     run_param = cr.get_user_arguments()
 
     use_ref_test_points = True
-    theta_value = np.asarray([-np.pi / 10])
+    theta_value = np.asarray([np.pi / 4])
     n_samples2generate = 64000 * 8
     n_trys = 1000
-    for snr in [6, -1]:
+    for snr in [6, -18]:
         metric_list = pru.MetricLister()
         sm = build_signal_model(run_param, snr)
         flow_opt = sm.get_optimal_flow_model()
         crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, snr)
-
-        if use_ref_test_points:
-            test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
+        far_point = -1.56079633
+        if snr < -10:
+            test_points = torch.tensor([[far_point]]).to(pru.get_working_device()).float().T
         else:
-            test_points = None
+            test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
+        # else:
+        #     test_points = None
 
         for j_try in tqdm(range(n_trys)):
             # try:
@@ -51,13 +53,14 @@ def main():
             cond = torch.max(eig_vec) / torch.min(eig_vec)
             cond_ref = torch.max(eig_vec_ref) / torch.min(eig_vec_ref)
             re_bm = np.linalg.norm(gbb.cpu().numpy() - bb_compare.cpu().numpy()) / np.linalg.norm(
-                bb_compare.cpu().numpy())
+                bb_compare.cpu().numpy() - 1)
             re_bb = np.linalg.norm(gbarankin.cpu().numpy() - bb_bound) / np.linalg.norm(
                 bb_bound)
             print(re_bm, re_bb)
             metric_list.add_value(re_bm=re_bm,
                                   re_bb=re_bb,
                                   cond=cond.item(),
+                                  n_samples2generate=n_samples2generate,
                                   cond_ref=cond_ref.item(),
                                   index=j_try)
             metric_list.print_last()

@@ -52,7 +52,7 @@ def plot_tp_search(in_data, in_legend, in_theta):
         ###############################
         # Apply Transfor
         ##############################
-        alpha = (test_point - in_theta) ** 2 / (1 / search_landscape - 1 + 1e-6)
+        alpha = search_landscape
         for i in range(len(loc) - 1):
             plt.semilogy(test_point[loc[i]:loc[i + 1]] - in_theta,
                          alpha[loc[i]:loc[i + 1]],

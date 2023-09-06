@@ -21,7 +21,7 @@ def init_config() -> pru.ConfigReader:
     ###############################################
     # Training
     ###############################################
-    _cr.add_parameter("base_epochs", type=int, default=160)
+    _cr.add_parameter("base_epochs", type=int, default=250)
     _cr.add_parameter('base_dataset_size', type=int, default=200000)
 
     _cr.add_parameter("lr", type=float, default=1e-4)
@@ -54,7 +54,7 @@ def init_config() -> pru.ConfigReader:
     _cr.add_parameter("wavelength", type=float, default=1)
     _cr.add_parameter("is_sensor_location_known", type=bool, default=True)
     _cr.add_parameter("signal_type", type=str, default="ComplexGaussian", enum=signal_model.SignalType)
-    _cr.add_parameter("noise_type", type=str, default="Uncorrelated", enum=signal_model.NoiseMatrix)
+    _cr.add_parameter("noise_type", type=str, default="Correlated", enum=signal_model.NoiseMatrix)
     _cr.add_parameter("array_perturbed_scale", type=float, default=0.0)
     _cr.add_parameter("snr", type=float, default=None)
     _cr.add_parameter("snr_min", type=float, default=-30)

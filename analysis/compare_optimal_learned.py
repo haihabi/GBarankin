@@ -8,6 +8,7 @@ import signal_model
 from analysis.helpers import get_timming_function, plot_tp_search, rmse_db
 from main_flow_training_stage import init_config, build_flow_model, build_signal_model
 from analysis.helpers import relative_error
+import scipy
 
 
 def main():
@@ -17,38 +18,47 @@ def main():
     # group_name = "thomas_boyle"
     # # group_name = "janice_sullivan"
     # group_name = "brandi_mccammon"
-    # group_name = "linda_lambert_-30_10"  # Pertubation
-    group_name = "benjamin_ginsberg_-30_10"
+    # group_name = "benjamin_ginsberg_-30_10"
+    group_name = ("linda_lambert_-30_10", -8)  # Pertubation
+
+    ref_cross = -10
+    # group_name = ("john_zamora_-30_10", -11)  # QAM
+    group_name = ("charles_mcadoo_-30_10", -5)  # Correlated
     user_name = "HVH"
-    apply_trimming = True
+    apply_trimming = False
     use_ref_test_points = True
     is_multiple_snr = True
-    theta_value = np.pi / 10
+    switch_threshold = False
+    theta_value = np.pi / 4
     n_samples2generate = 64000 * 8
     metric_list = pru.MetricLister()
-
+    far_point = -1.56079633
     if is_multiple_snr:
-        run_name = group_name
+        run_name = group_name[0]
         run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
         sm = build_signal_model(run_config, None)
         flow, _ = build_flow_model(run_config, sm)
         flow_opt = sm.get_optimal_flow_model()
         pru.load_model_weights(run, flow, f"model_last_{None}.pth")
         adaptive_trimming = get_timming_function(apply_trimming, sm)
-        for snr in np.linspace(3, 10, 11):
-            crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, in_snr=snr)
+        for snr in np.linspace(-30, 10, 41):
+            crb, bb_bound, bb_matrix, test_points_base = sm.compute_reference_bound(theta_value, in_snr=snr)
+
             if use_ref_test_points:
-                test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
+                test_points = torch.tensor(test_points_base).to(pru.get_working_device()).float().T
             else:
                 test_points = None
+
+            far_test_points = torch.tensor([[far_point]]).to(pru.get_working_device()).float().T
+            near_test_points = torch.tensor([[test_points + 1e-4]]).to(pru.get_working_device()).float().T
             eig_vec = np.linalg.eig(bb_matrix - np.ones(bb_matrix.shape))[0]
             cond = np.max(eig_vec) / np.min(eig_vec)
 
             noise_scale = np.sqrt(sm.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
             print("Learned")
-            gbarankin_ntp, gbb, search_landscape_ntp, test_points_search_ntp, test_points_ntp = generative_bound.generative_barankin_bound(
+            gbarankin_ntp, gbb_learend, search_landscape_ntp, test_points_search_ntp, test_points_ntp = generative_bound.generative_barankin_bound(
                 flow, n_samples2generate,
-                test_points=test_points,
+                test_points=far_test_points if snr < group_name[1] else near_test_points,
                 parameter_name=constants.DOAS,
                 doas=torch.tensor([theta_value]).to(
                     pru.get_working_device()).reshape(
@@ -58,9 +68,10 @@ def main():
                     [1, -1]).float(),
                 trimming_step=adaptive_trimming)
             print("Optimal")
-            gbarankin, gbb, search_landscape, test_points_search, test_points = generative_bound.generative_barankin_bound(
+            print(test_points_ntp)
+            gbarankin, gbb, search_landscape, test_points_search, test_points_opt = generative_bound.generative_barankin_bound(
                 flow_opt, n_samples2generate,
-                test_points=test_points,
+                test_points=far_test_points if snr < ref_cross else near_test_points,
                 parameter_name=constants.DOAS,
                 doas=torch.tensor([theta_value]).to(
                     pru.get_working_device()).reshape(
@@ -68,15 +79,26 @@ def main():
                 noise_scale=torch.tensor([noise_scale]).to(
                     pru.get_working_device()).reshape(
                     [1, -1]).float())
-
-            if False:
-                plot_tp_search([(search_landscape_ntp, test_points_search_ntp, test_points_ntp),
-                                (search_landscape, test_points_search, test_points)], [("Learned", "green"),
-                                                                                       ("Optimal", "red")],
-                               theta_value)
+            print(test_points)
+            # if True:
+            #     plot_tp_search([(search_landscape_ntp, test_points_search_ntp, test_points_ntp),
+            #                     (search_landscape, test_points_search, test_points)], [("Learned", "green"),
+            #                                                                            ("Optimal", "red")],
+            #                    theta_value)
             re = relative_error(gbarankin.cpu().numpy(), bb_bound)
+            b0 = bb_matrix.flatten() - 1
+            b0_gen = (gbb.flatten() - 1).item()
+            b0_lerend = (gbb_learend.flatten() - 1).item()
+            # if b0_gen.shape[0] == 1:
+            #     b0_gen = b0_gen.item()
+            # else:
+            #     b0_gen = None
             metric_list.add_value(gbarankin=gbarankin.item(),
+                                  test_points=test_points_base.flatten(),
                                   # gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
+                                  b0=b0,
+                                  b0_gen=b0_gen,
+                                  b0_lerend=b0_lerend,
                                   re=re,
                                   cond=cond,
                                   gbarankin_ntp=gbarankin_ntp.item(),
@@ -143,13 +165,25 @@ def main():
                                theta_value)
 
             print('Completed SNR = {0:.2f} dB'.format(snr))
-    metric_list.save2disk(f"data_{group_name}_{n_samples2generate}.pkl")
-    plt.figure(figsize=(10, 8))
+
+    metric_list.save2disk(f"data_{group_name[0]}_{n_samples2generate}.pkl")
+    plt.subplot(1, 2, 1)
+    plt.semilogy(metric_list.get_array("snr"), metric_list.get_array("b0"), "--x", label="b0")
+    plt.semilogy(metric_list.get_array("snr"), metric_list.get_array("b0_gen"), "--x", label="b0-Gen")
+    plt.semilogy(metric_list.get_array("snr"), metric_list.get_array("b0_lerend"), "--x", label="b0_learend")
+    # plt.subplot(1, 3, 2)
+    # plt.plot(metric_list.get_array("snr"), metric_list.get_array("test_points"))
+    plt.grid()
+    plt.legend()
+    # plt.show()
+    # plt.figure(figsize=(10, 8))
+    plt.subplot(1, 2, 2)
     plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("gbarankin_ntp")), "--v",
                  label=f"GBarankin (Learned,{run_config.signal_type.name})")
     plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("gbarankin")), "--o",
                  label="GBarankin (Optimal, Gaussian)")
 
+    plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("bb_bound")), "--x", label="BB")
     plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("crb")), label="CRB")
     # plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("mle_mse")), "o", label="MLE")
     plt.grid()

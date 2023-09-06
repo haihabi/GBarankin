@@ -83,7 +83,7 @@ class DOASignalModel:
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
         elif noise_type == NoiseMatrix.Correlated:
             D = np.eye(self.array.size) * self.power_noise
-            L = np.tril(0.5 * randcn([self.array.size, self.array.size]), k=-1) + np.eye(self.array.size)
+            L = np.tril(0.05 * randcn([self.array.size, self.array.size]), k=-1) + np.eye(self.array.size)
             self.noise_matrix = (L @ D @ L.T.conj()).astype("complex64")
             self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
         else:
@@ -149,7 +149,7 @@ class DOASignalModel:
             noise_scale = 1
         sources = self.build_sources(in_theta)
         crb, _ = perf.crb_stouc_farfield_1d(self.array, sources, self.wavelength, self.signal_matrix,
-                                            self.power_noise * noise_scale, self.n_snapshots)
+                                            self.noise_matrix * noise_scale, self.n_snapshots)
         bb_bound, bb_matrix, test_points = perf.barankin_stouc_farfield_1d(self.array, sources, self.wavelength,
                                                                            self.signal_matrix,
                                                                            self.noise_matrix * noise_scale,
