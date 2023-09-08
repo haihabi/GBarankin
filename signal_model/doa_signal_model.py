@@ -106,6 +106,7 @@ class DOASignalModel:
             data = pickle.load(file)
         self.noise_matrix = data["noise_matrix"]
         self.signal_matrix = data["signal_matrix"]
+        self.noise_signal = model.ComplexStochasticSignal(self.array.size, self.noise_matrix)
 
     @staticmethod
     def build_sources(in_theta):
@@ -117,12 +118,19 @@ class DOASignalModel:
         )
         return sources
 
-    def mse_mle(self, in_sources, n_repeats=300):
+    def mse_mle(self, in_sources, n_repeats=300, in_snr=None):
         sources = self.build_sources(in_sources)
         if sources.size != self.k_targets:
             raise Exception("Mismatch in number of sources")
         cur_mse = 0
         estimator = estimation.RootMUSIC1D(self.wavelength)
+
+        if self.is_multiple_snr and in_snr is None:
+            raise Exception("")
+        elif self.is_multiple_snr:
+            noise_scale = np.sqrt(np.asarray(DOASignalModel.POWER_SOURCE / (10 ** (in_snr / 10))).astype("float32"))
+        else:
+            noise_scale = 1
         for r in range(n_repeats):
             if self.array_perturbed_scale > 0:
                 self.array = self.array.get_perturbed_copy(
@@ -131,7 +139,7 @@ class DOASignalModel:
             A = self.array.steering_matrix(sources, self.wavelength)
             S = self.source_signal.emit(self.n_snapshots)
             N = self.noise_signal.emit(self.n_snapshots)
-            Y = A @ S + N
+            Y = A @ S + noise_scale * N
             # Rs = (S @ S.conj().T) / self.n_snapshots
             Ry = (Y @ Y.conj().T) / self.n_snapshots
             resolved, estimates = estimator.estimate(Ry, sources.size, self.d0)
@@ -173,6 +181,7 @@ class DOASignalModel:
         labels_list = []
         data_list = []
         noise_scale = 1
+
         for i in range(number_of_samples):
             if self.is_multiple_snr:
                 snr = self.snr_min + (self.snr_max - self.snr_min) * np.random.rand(1)

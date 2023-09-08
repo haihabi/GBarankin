@@ -21,9 +21,9 @@ def main():
     # group_name = "benjamin_ginsberg_-30_10"
     group_name = ("linda_lambert_-30_10", -8)  # Pertubation
 
-    ref_cross = -10
+    ref_cross = -9.0
     # group_name = ("john_zamora_-30_10", -11)  # QAM
-    group_name = ("charles_mcadoo_-30_10", -5)  # Correlated
+    group_name = ("charles_mcadoo_-30_10", -9.0)  # Correlated
     user_name = "HVH"
     apply_trimming = False
     use_ref_test_points = True
@@ -41,7 +41,7 @@ def main():
         flow_opt = sm.get_optimal_flow_model()
         pru.load_model_weights(run, flow, f"model_last_{None}.pth")
         adaptive_trimming = get_timming_function(apply_trimming, sm)
-        for snr in np.linspace(-30, 10, 41):
+        for snr in [-14, -13]:
             crb, bb_bound, bb_matrix, test_points_base = sm.compute_reference_bound(theta_value, in_snr=snr)
 
             if use_ref_test_points:
@@ -50,7 +50,7 @@ def main():
                 test_points = None
 
             far_test_points = torch.tensor([[far_point]]).to(pru.get_working_device()).float().T
-            near_test_points = torch.tensor([[test_points + 1e-4]]).to(pru.get_working_device()).float().T
+            near_test_points = torch.tensor([[theta_value + 1e-5]]).to(pru.get_working_device()).float().T
             eig_vec = np.linalg.eig(bb_matrix - np.ones(bb_matrix.shape))[0]
             cond = np.max(eig_vec) / np.min(eig_vec)
 
@@ -59,6 +59,18 @@ def main():
             gbarankin_ntp, gbb_learend, search_landscape_ntp, test_points_search_ntp, test_points_ntp = generative_bound.generative_barankin_bound(
                 flow, n_samples2generate,
                 test_points=far_test_points if snr < group_name[1] else near_test_points,
+                parameter_name=constants.DOAS,
+                doas=torch.tensor([theta_value]).to(
+                    pru.get_working_device()).reshape(
+                    [1, -1]).float(),
+                noise_scale=torch.tensor([noise_scale]).to(
+                    pru.get_working_device()).reshape(
+                    [1, -1]).float(),
+                trimming_step=adaptive_trimming)
+
+            gbarankin_ntp_same, _, _, _, _ = generative_bound.generative_barankin_bound(
+                flow, n_samples2generate,
+                test_points=test_points,
                 parameter_name=constants.DOAS,
                 doas=torch.tensor([theta_value]).to(
                     pru.get_working_device()).reshape(
@@ -102,6 +114,7 @@ def main():
                                   re=re,
                                   cond=cond,
                                   gbarankin_ntp=gbarankin_ntp.item(),
+                                  gbarankin_ntp_same=gbarankin_ntp_same.item(),
                                   crb=crb.flatten(),
                                   bb_bound=bb_bound.flatten(),
                                   snr=snr)
@@ -166,32 +179,7 @@ def main():
 
             print('Completed SNR = {0:.2f} dB'.format(snr))
 
-    metric_list.save2disk(f"data_{group_name[0]}_{n_samples2generate}.pkl")
-    plt.subplot(1, 2, 1)
-    plt.semilogy(metric_list.get_array("snr"), metric_list.get_array("b0"), "--x", label="b0")
-    plt.semilogy(metric_list.get_array("snr"), metric_list.get_array("b0_gen"), "--x", label="b0-Gen")
-    plt.semilogy(metric_list.get_array("snr"), metric_list.get_array("b0_lerend"), "--x", label="b0_learend")
-    # plt.subplot(1, 3, 2)
-    # plt.plot(metric_list.get_array("snr"), metric_list.get_array("test_points"))
-    plt.grid()
-    plt.legend()
-    # plt.show()
-    # plt.figure(figsize=(10, 8))
-    plt.subplot(1, 2, 2)
-    plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("gbarankin_ntp")), "--v",
-                 label=f"GBarankin (Learned,{run_config.signal_type.name})")
-    plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("gbarankin")), "--o",
-                 label="GBarankin (Optimal, Gaussian)")
-
-    plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("bb_bound")), "--x", label="BB")
-    plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("crb")), label="CRB")
-    # plt.semilogy(metric_list.get_array("snr"), rmse_db(metric_list.get_array("mle_mse")), "o", label="MLE")
-    plt.grid()
-    plt.legend(fontsize=14)
-    plt.ylabel("RMSE[deg]", fontsize=14)
-    plt.xlabel("SNR[dB]", fontsize=14)
-    plt.savefig(f"compare_with_learned_{group_name}_{n_samples2generate}.svg")
-    plt.show()
+    metric_list.save2disk(f"data_{group_name[0]}_{n_samples2generate}_blabla.pkl")
 
 
 if __name__ == '__main__':

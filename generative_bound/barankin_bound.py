@@ -233,7 +233,7 @@ def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, tr
         bb_info_inv = 1 / torch.abs((it_cross()[0] * (delta_tp ** 2)).double())
     else:
         bb_info_inv = torch.linalg.inv(bb_info - torch.ones_like(bb_info))
-    if torch.all(bb_info - torch.ones_like(bb_info) < 1):
+    if torch.all(bb_info - torch.ones_like(bb_info) < 1) and not zero_delta:
         bb_info_inv = torch.eye(1, device=bb_info.device).double()
     tau_vector = (test_points - kwargs[parameter_name]).double()
     return bb_info_inv, tau_vector, bb_info, search_landscape, test_points_search, test_points

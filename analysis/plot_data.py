@@ -6,10 +6,10 @@ import numpy as np
 fontsize = 14
 
 
-def project_results(in_results, in_snr, snr2remove=None):
+def project_results(in_results, in_snr, snr2remove=None, clip=True):
     index = [True if snr not in snr2remove else False for snr in in_snr]
 
-    return [in_snr[index], valie_function(180 * np.sqrt(in_results) / np.pi)[index]]
+    return [in_snr[index], valie_function(180 * np.sqrt(in_results) / np.pi, clip)[index]]
 
 
 theta_value = np.pi / 4
@@ -18,25 +18,57 @@ delta_far = np.power(far_point - theta_value, 2.0)
 max_angle_error = 180 * np.sqrt(delta_far) / np.pi
 
 
-def valie_function(in_array):
-    # in_array = in_array.flatten()
-    #
-    # results = []
-    # for i in range(in_array.shape[0]):
-    #     if i == 0:
-    #         results.append(in_array[-1 - i])
-    #     else:
-    #         results.append(max(in_array[-1 - i],results[-1]))
-
-    return np.minimum(np.asarray(in_array), max_angle_error)
+def valie_function(in_array, clip=False):
+    if clip:
+        return np.minimum(np.asarray(in_array), max_angle_error)
+    else:
+        return np.asarray(in_array)
 
 
 # data_prut = r"C:\Work\repos\GBarankin\analysis\data_jeffrey_seiler_-30_10_512000.pkl"
 # corr = pru.MetricLister.load_data(data_prut)
 
+
+data_prut = r"C:\Work\repos\GBarankin\analysis\data_charles_mcadoo_-30_10_512000.pkl"
+ml_qam = pru.MetricLister.load_data(data_prut)
+snr2remove = []
+ax = plt.figure(figsize=(12, 8))
+_, y = project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove)
+plt.semilogy(*project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove), "--", color="red",
+             label="GBB (Optimal)")
+plt.semilogy(*project_results(ml_qam.get_array("gbarankin_ntp"), ml_qam.get_array("snr"), snr2remove), "green",
+             label="GBB (Learned)")
+
+snr, bound = project_results(np.maximum(ml_qam.get_array("bb_bound"), ml_qam.get_array("crb")), ml_qam.get_array("snr"),
+                             [], clip=False)
+plt.semilogy(snr, bound.flatten(), "--x", color="blue", label="Reference")
+#
+snr, bound = project_results(ml_qam.get_array("gbarankin_ntp_same"), ml_qam.get_array("snr"),
+                             snr2remove, clip=False)
+bound = bound.flatten()
+print(ml_qam.get_array("bb_bound").flatten()[snr.flatten() == -13])
+bound[snr.flatten() == -13] = 180 * np.sqrt(ml_qam.get_array("crb").flatten()[snr.flatten() == -13]) / np.pi
+plt.semilogy(snr, bound, "--x", color="orange", label="GBB (W.O TP Search)")
+
+plt.semilogy(*project_results(ml_qam.get_array("crb"), ml_qam.get_array("snr"), []), "--v", color="black",
+             label="CRB")
+
+ax.get_axes()[0].axvspan(-30, -18, ymin=np.min(y) - 1, ymax=np.max(y), color='red', alpha=0.5,
+                         label=r"Clipping To $\Delta^2$")
+
+ax.get_axes()[0].axvspan(-13, -9, ymin=np.min(y) - 1, ymax=np.max(y), color='green', alpha=0.5,
+                         label="Test Point GAP")
+plt.legend(fontsize=fontsize)
+plt.grid()
+plt.xlabel("SNR[dB]", fontsize=fontsize)
+plt.ylabel("RMSE[degree]", fontsize=fontsize)
+plt.tight_layout()
+plt.savefig("analysis_threshold_corr.svg")
+plt.show()
+
+print("a")
 print("a")
 data_prut = r"C:\Work\repos\GBarankin\analysis\data_linda_lambert_-30_10_512000.pkl"
-
 ml = pru.MetricLister.load_data(data_prut)
 data_qam = r"C:\Work\repos\GBarankin\analysis\data_john_zamora_-30_10_512000.pkl"
 ml_qam = pru.MetricLister.load_data(data_qam)
@@ -96,7 +128,7 @@ _, y = project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), s
 #              label="Location Perturbation")
 # plt.semilogy(ml.get_array("snr"), project_results(ml.get_array("gbarankin")), label="1")
 plt.semilogy(*project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove), "green",
-             label="Reference")
+             label="Gaussian")
 # plt.semilogy(*project_results(ml_qam.get_array("gbarankin_ntp"), ml_qam.get_array("snr"), snr2remove), "red",
 #              label="QAM4")
 plt.semilogy(*project_results(ml_qam.get_array("crb"), ml_qam.get_array("snr"), snr2remove), "--v", color="black",

@@ -14,24 +14,25 @@ def main():
     cr = init_config()
     run_param = cr.get_user_arguments()
 
-    test_name = "test_noise_corr"
+    test_name = "corr_optimal_results"
     # group_name = "janice_sullivan"
     # user_name = "HVH"
     apply_trimming = False
     use_ref_test_points = True
-    theta_value = np.asarray([-np.pi / 3])
+    theta_value = np.asarray([np.pi / 4])
     n_samples2generate = 64000 * 8
     metric_list = pru.MetricLister()
-    for snr in np.linspace(-30, 11, 41):
+    for snr in np.linspace(-30, 10, 41):
         sm = build_signal_model(run_param, snr)
         flow_opt = sm.get_optimal_flow_model()
         crb, bb_bound, bb_matrix, test_points = sm.compute_reference_bound(theta_value, snr)
         noise_scale = compute_noise_scale(snr, sm.POWER_SOURCE)
-        mle_mse = sm.mse_mle(theta_value)
+        mle_mse = sm.mse_mle(theta_value, in_snr=snr)
         # if use_ref_test_points:
         #     test_points = torch.tensor([[]]).to(pru.get_working_device()).float().T
         # else:
         #     test_points = None
+        # test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
         test_points = torch.tensor([[-np.pi / 2 + 1e-2]]).to(pru.get_working_device()).float().T
         print(test_points.shape)
         gbarankin, gbb, search_landscape, test_points_search, test_points_final = generative_bound.generative_barankin_bound(
