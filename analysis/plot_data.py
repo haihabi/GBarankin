@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pyresearchutils as pru
 import numpy as np
 
-fontsize = 14
+fontsize = 16
 
 
 def project_results(in_results, in_snr, snr2remove=None, clip=True):
@@ -30,9 +30,10 @@ def valie_function(in_array, clip=False):
 
 
 data_prut = r"C:\Work\repos\GBarankin\analysis\data_charles_mcadoo_-30_10_512000.pkl"
+# data_prut = r"C:\Work\repos\GBarankin\analysis\data_charles_mcadoo_-30_10_1024000_new.pkl"
 ml_qam = pru.MetricLister.load_data(data_prut)
 snr2remove = []
-ax = plt.figure(figsize=(12, 8))
+ax = plt.figure(figsize=(12, 6))
 _, y = project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove)
 plt.semilogy(*project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove), "--", color="red",
              label="GBB (Optimal)")
@@ -41,14 +42,13 @@ plt.semilogy(*project_results(ml_qam.get_array("gbarankin_ntp"), ml_qam.get_arra
 
 snr, bound = project_results(np.maximum(ml_qam.get_array("bb_bound"), ml_qam.get_array("crb")), ml_qam.get_array("snr"),
                              [], clip=False)
-plt.semilogy(snr, bound.flatten(), "--x", color="blue", label="Reference")
+plt.semilogy(snr, bound.flatten(), "--x", color="blue", label="BB")
 #
 snr, bound = project_results(ml_qam.get_array("gbarankin_ntp_same"), ml_qam.get_array("snr"),
                              snr2remove, clip=False)
 bound = bound.flatten()
-print(ml_qam.get_array("bb_bound").flatten()[snr.flatten() == -13])
 bound[snr.flatten() == -13] = 180 * np.sqrt(ml_qam.get_array("crb").flatten()[snr.flatten() == -13]) / np.pi
-plt.semilogy(snr, bound, "--x", color="orange", label="GBB (W.O TP Search)")
+plt.semilogy(snr, bound, "--x", color="orange", label="GBB (Same TP as BB)")
 
 plt.semilogy(*project_results(ml_qam.get_array("crb"), ml_qam.get_array("snr"), []), "--v", color="black",
              label="CRB")
@@ -58,10 +58,42 @@ ax.get_axes()[0].axvspan(-30, -18, ymin=np.min(y) - 1, ymax=np.max(y), color='re
 
 ax.get_axes()[0].axvspan(-13, -9, ymin=np.min(y) - 1, ymax=np.max(y), color='green', alpha=0.5,
                          label="Test Point GAP")
-plt.legend(fontsize=fontsize)
+plt.legend(fontsize=fontsize, loc='lower left')
 plt.grid()
 plt.xlabel("SNR[dB]", fontsize=fontsize)
 plt.ylabel("RMSE[degree]", fontsize=fontsize)
+
+axins = ax.get_axes()[0].inset_axes([0.5, 0.5, 0.49, 0.49])
+
+_, y = project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove)
+axins.semilogy(*project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove), "--", color="red",
+               label="GBB (Optimal)")
+axins.semilogy(*project_results(ml_qam.get_array("gbarankin_ntp"), ml_qam.get_array("snr"), snr2remove), "green",
+               label="GBB (Learned)")
+
+snr, bound = project_results(np.maximum(ml_qam.get_array("bb_bound"), ml_qam.get_array("crb")), ml_qam.get_array("snr"),
+                             [], clip=False)
+axins.semilogy(snr, bound.flatten(), "--x", color="blue", label="BB")
+#
+snr, bound = project_results(ml_qam.get_array("gbarankin_ntp_same"), ml_qam.get_array("snr"),
+                             snr2remove, clip=False)
+bound = bound.flatten()
+bound[snr.flatten() == -13] = 180 * np.sqrt(ml_qam.get_array("crb").flatten()[snr.flatten() == -13]) / np.pi
+axins.semilogy(snr, bound, "--x", color="orange", label="GBB (W.O TP Search)")
+
+axins.semilogy(*project_results(ml_qam.get_array("crb"), ml_qam.get_array("snr"), []), "--v", color="black",
+               label="CRB")
+
+axins.axvspan(-30, -18, ymin=np.min(y) - 1, ymax=np.max(y), color='red', alpha=0.5,
+              label=r"Clipping To $\Delta^2$")
+
+axins.axvspan(-13, -9, ymin=np.min(y) - 1, ymax=np.max(y), color='green', alpha=0.5,
+              label="Test Point GAP")
+x1, x2, y1, y2 = -14, -8, 0.8, 10
+axins.set_xlim(x1, x2)
+axins.set_ylim(y1, y2)
+axins.grid(True)
+ax.get_axes()[0].indicate_inset_zoom(axins, edgecolor="black")
 plt.tight_layout()
 plt.savefig("analysis_threshold_corr.svg")
 plt.show()
@@ -100,15 +132,15 @@ print("a")
 snrs = ml.get_array("snr")
 
 snr2remove = []
-plt.figure(figsize=(12, 8))
+plt.figure(figsize=(12, 6))
 _, y = project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove)
 plt.semilogy(*project_results(ml.get_array("gbarankin_ntp"), ml.get_array("snr"), snr2remove), "blue",
              label="Location Perturbation")
 # plt.semilogy(ml.get_array("snr"), project_results(ml.get_array("gbarankin")), label="1")
 plt.semilogy(*project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove), "green",
-             label="Reference")
-plt.semilogy(*project_results(ml_qam.get_array("bb_bound"), ml_qam.get_array("snr"), snr2remove), "yellow",
-             label="A")
+             label="Gaussian")
+# plt.semilogy(*project_results(ml_qam.get_array("bb_bound"), ml_qam.get_array("snr"), snr2remove), "yellow",
+#              label="A")
 plt.semilogy(*project_results(ml_qam.get_array("gbarankin_ntp"), ml_qam.get_array("snr"), snr2remove), "red",
              label="QAM4")
 plt.semilogy(*project_results(ml_qam.get_array("crb"), ml_qam.get_array("snr"), snr2remove), "--v", color="black",
@@ -122,7 +154,7 @@ plt.tight_layout()
 plt.savefig("analysis_threshold.svg")
 plt.show()
 
-ax = plt.figure(figsize=(12, 8))
+ax = plt.figure(figsize=(10, 8))
 _, y = project_results(ml_qam.get_array("gbarankin"), ml_qam.get_array("snr"), snr2remove)
 # plt.semilogy(*project_results(ml.get_array("gbarankin_ntp"), ml.get_array("snr"), snr2remove), "blue",
 #              label="Location Perturbation")

@@ -60,7 +60,7 @@ class AdaptiveTrimming(torch.nn.Module):
         if self.trimming_type == TrimmingType.ALL:
             return torch.ones(m_tilde).to(in_gamma_tensor.device).bool()
         gamma_tensor = torch.reshape(in_gamma_tensor, [m_tilde, -1])
-        center_gamma_tensor = gamma_tensor - self.mean
+        center_gamma_tensor = gamma_tensor - self.mean.unsqueeze(dim=0)
         norm_array = torch.linalg.norm(center_gamma_tensor, dim=1)
         state = norm_array < self.get_upper_bound()
         return state

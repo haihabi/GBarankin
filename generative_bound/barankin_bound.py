@@ -209,32 +209,32 @@ def _generative_barankin_bound(in_flow_model, m, test_points, batch_size=128, tr
     it_bm = IterativeAverage()
     it_cross = IterativeAverage()
     delta_tp = test_points - kwargs[parameter_name]
-    zero_delta = torch.abs(delta_tp) < 1e-1
+
     theta_grad = kwargs[parameter_name] * torch.ones([batch_size, kwargs[parameter_name].shape[0]], requires_grad=True,
                                                      device=kwargs[parameter_name].device)
 
     for gamma in tqdm(train_dataloader):
         gamma = gamma.to(pru.get_working_device())
-        # if zero_delta:
         input_dict[parameter_name] = theta_grad
         nll_tensor = in_flow_model.nll(gamma, **input_dict).reshape([-1, 1])
         s = utils.jacobian_single(nll_tensor, theta_grad)
         it_cross.update(s ** 2)
-        # else:
         with torch.no_grad():
             _bb_info_i = barankin_matrix(in_flow_model, gamma, test_points, parameter_name, **kwargs)
             it_bm.update(_bb_info_i)
     ##########################
     # Filter TP
     ##########################
-    # print(conv)
-    bb_info, bb_std = it_bm()
-    if zero_delta or torch.any(bb_info < 0):
-        bb_info_inv = 1 / torch.abs((it_cross()[0] * (delta_tp ** 2)).double())
+    gfim = it_cross()[0]
+    zero_delta = torch.abs(delta_tp) < torch.sqrt(1 / gfim).item()
+    bb_info, _ = it_bm()
+    if zero_delta:
+        bb_info_inv = 1 / torch.abs((gfim * (delta_tp ** 2)).double())
+    elif torch.all(bb_info - torch.ones_like(bb_info) < 1) and not zero_delta:
+        bb_info_inv = torch.eye(1, device=bb_info.device).double()
     else:
         bb_info_inv = torch.linalg.inv(bb_info - torch.ones_like(bb_info))
-    if torch.all(bb_info - torch.ones_like(bb_info) < 1) and not zero_delta:
-        bb_info_inv = torch.eye(1, device=bb_info.device).double()
+
     tau_vector = (test_points - kwargs[parameter_name]).double()
     return bb_info_inv, tau_vector, bb_info, search_landscape, test_points_search, test_points
 
@@ -252,21 +252,4 @@ def generative_barankin_bound(in_flow_model, m, test_points=None, batch_size=512
         parameter_name,
         **kwargs)
     bound = torch.matmul(tau_vector.transpose(-1, -2), torch.matmul(bb_info_inv, tau_vector))
-    # if torch.any(bound.diagonal() < 0).item():
-    #     print("Negative Bound!!!")
-    #     if tau_vector.shape[0] > 1:
-    #         status = (bb_info_inv.diag() > 0)
-    #         if torch.sum(status) > 0:
-    #             bb_info_filter = bb_info[status.reshape([-1, 1]) * status.reshape([1, -1])].reshape(
-    #                 [status.sum(), status.sum()])
-    #             tau_vector_filter = tau_vector[status, :]
-    #         else:
-    #             index_chosen = bb_info.diag().argmin()
-    #             bb_info_filter = bb_info[index_chosen, index_chosen].reshape([1, 1])
-    #             tau_vector_filter = tau_vector[index_chosen, :].reshape([1, -1])
-    #         print(f"New Number of TP:{tau_vector_filter.shape[0]}")
-    #         bb_info_inv_filter = torch.linalg.inv(bb_info_filter)
-    #         bound = torch.matmul(tau_vector_filter.transpose(-1, -2),
-    #                              torch.matmul(bb_info_inv_filter, tau_vector_filter))
-
     return bound, bb_info, search_landscape, test_points_search, test_points_selected

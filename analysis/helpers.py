@@ -6,8 +6,10 @@ import pyresearchutils as pru
 import torch
 
 
-def compute_noise_scale(snr,source_power):
-    return np.sqrt(source_power/ (10 ** (snr / 10))).astype("float32")
+def compute_noise_scale(snr, source_power):
+    return np.sqrt(source_power / (10 ** (snr / 10))).astype("float32")
+
+
 def align_bb_matrix(original_tp, final_tp, original_bb, final_bb):
     index_list = []
     for i in range(final_tp.shape[0]):
@@ -23,10 +25,10 @@ def align_bb_matrix(original_tp, final_tp, original_bb, final_bb):
     return bb_compare
 
 
-def get_timming_function(is_apply_trimming, in_sm):
+def get_timming_function(is_apply_trimming, in_sm,snr):
     adaptive_trimming = None
     if is_apply_trimming:
-        data = in_sm.generate_dataset(10000)
+        data = in_sm.generate_dataset(10000, forces_snr=snr)
         data_np = np.stack(data.data, axis=0)
         data_np = data_np.reshape([10000, -1])
         mean_vec = np.mean(data_np, axis=0)

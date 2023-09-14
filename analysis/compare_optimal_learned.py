@@ -25,12 +25,12 @@ def main():
     # group_name = ("john_zamora_-30_10", -11)  # QAM
     group_name = ("charles_mcadoo_-30_10", -9.0)  # Correlated
     user_name = "HVH"
-    apply_trimming = False
+    apply_trimming = True
     use_ref_test_points = True
     is_multiple_snr = True
     switch_threshold = False
     theta_value = np.pi / 4
-    n_samples2generate = 64000 * 8
+    n_samples2generate = 64000
     metric_list = pru.MetricLister()
     far_point = -1.56079633
     if is_multiple_snr:
@@ -40,8 +40,10 @@ def main():
         flow, _ = build_flow_model(run_config, sm)
         flow_opt = sm.get_optimal_flow_model()
         pru.load_model_weights(run, flow, f"model_last_{None}.pth")
-        adaptive_trimming = get_timming_function(apply_trimming, sm)
-        for snr in [-14, -13]:
+
+        for snr in np.linspace(-30, 10, 41):
+            apply_trimming = False
+            adaptive_trimming = get_timming_function(apply_trimming, sm, snr)
             crb, bb_bound, bb_matrix, test_points_base = sm.compute_reference_bound(theta_value, in_snr=snr)
 
             if use_ref_test_points:
@@ -77,8 +79,7 @@ def main():
                     [1, -1]).float(),
                 noise_scale=torch.tensor([noise_scale]).to(
                     pru.get_working_device()).reshape(
-                    [1, -1]).float(),
-                trimming_step=adaptive_trimming)
+                    [1, -1]).float())
             print("Optimal")
             print(test_points_ntp)
             gbarankin, gbb, search_landscape, test_points_search, test_points_opt = generative_bound.generative_barankin_bound(
@@ -179,7 +180,7 @@ def main():
 
             print('Completed SNR = {0:.2f} dB'.format(snr))
 
-    metric_list.save2disk(f"data_{group_name[0]}_{n_samples2generate}_blabla.pkl")
+    metric_list.save2disk(f"data_{group_name[0]}_{n_samples2generate}_new_new.pkl")
 
 
 if __name__ == '__main__':

@@ -177,15 +177,18 @@ class DOASignalModel:
                                          is_multiple_snrs=self.is_multiple_snr)
         return doa_optimal_flow.to(pru.get_working_device())
 
-    def generate_dataset(self, number_of_samples, transform=None):
+    def generate_dataset(self, number_of_samples, transform=None, forces_snr=None):
         labels_list = []
         data_list = []
         noise_scale = 1
 
         for i in range(number_of_samples):
             if self.is_multiple_snr:
-                snr = self.snr_min + (self.snr_max - self.snr_min) * np.random.rand(1)
-                noise_scale = np.sqrt(DOASignalModel.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
+                if forces_snr is None:
+                    snr = self.snr_min + (self.snr_max - self.snr_min) * np.random.rand(1)
+                    noise_scale = np.sqrt(DOASignalModel.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
+                else:
+                    noise_scale = np.sqrt(DOASignalModel.POWER_SOURCE / (10 ** (forces_snr / 10))).astype("float32")
             if self.array_perturbed_scale > 0:
                 self.array = self.array.get_perturbed_copy(
                     {'location_errors': (np.random.randn(self.array.size, 1) * self.array_perturbed_scale, True)})
