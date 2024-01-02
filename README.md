@@ -1,1 +1,1 @@
-# GBarankin
+# Generative Barankin Bound

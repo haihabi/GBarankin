@@ -118,7 +118,7 @@ class DOASignalModel:
         )
         return sources
 
-    def mse_mle(self, in_sources, n_repeats=300, in_snr=None):
+    def mse_mle(self, in_sources, n_repeats=10000, in_snr=None):
         sources = self.build_sources(in_sources)
         if sources.size != self.k_targets:
             raise Exception("Mismatch in number of sources")
@@ -141,7 +141,7 @@ class DOASignalModel:
             N = self.noise_signal.emit(self.n_snapshots)
             Y = A @ S + noise_scale * N
             # Rs = (S @ S.conj().T) / self.n_snapshots
-            Ry = (Y @ Y.conj().T) / self.n_snapshots
+            Ry = (Y @ Y.conj().T) / self.n_snapshots - self.noise_matrix
             resolved, estimates = estimator.estimate(Ry, sources.size, self.d0)
             # In practice, you should check if `resolved` is true.
             # We skip the check here.

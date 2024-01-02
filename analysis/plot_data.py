@@ -29,7 +29,7 @@ def valie_function(in_array, clip=False):
 # corr = pru.MetricLister.load_data(data_prut)
 
 
-data_prut = r"C:\Work\repos\GBarankin\analysis\data_charles_mcadoo_-30_10_512000.pkl"
+data_prut = r"C:\Work\repos\GBarankin\analysis\data_charles_mcadoo_-30_10_512000_new_new.pkl"
 # data_prut = r"C:\Work\repos\GBarankin\analysis\data_charles_mcadoo_-30_10_1024000_new.pkl"
 ml_qam = pru.MetricLister.load_data(data_prut)
 snr2remove = []
@@ -52,6 +52,9 @@ plt.semilogy(snr, bound, "--x", color="orange", label="GBB (Same TP as BB)")
 
 plt.semilogy(*project_results(ml_qam.get_array("crb"), ml_qam.get_array("snr"), []), "--v", color="black",
              label="CRB")
+
+plt.semilogy(*project_results(ml_qam.get_array("mle"), ml_qam.get_array("snr"), []), "--x", color="black",
+             label="MLE")
 
 ax.get_axes()[0].axvspan(-30, -18, ymin=np.min(y) - 1, ymax=np.max(y), color='red', alpha=0.5,
                          label=r"Clipping To $\Delta^2$")

@@ -23,24 +23,37 @@ def main():
 
     ref_cross = -9.0
     # group_name = ("john_zamora_-30_10", -11)  # QAM
-    group_name = ("charles_mcadoo_-30_10", -9.0)  # Correlated
+    group_name = ("charles_mcadoo_-30_10",-9.0)  # Correlated -9.0
     user_name = "HVH"
     apply_trimming = True
     use_ref_test_points = True
     is_multiple_snr = True
     switch_threshold = False
     theta_value = np.pi / 4
-    n_samples2generate = 64000
+    n_samples2generate = 64000 * 8
     metric_list = pru.MetricLister()
     far_point = -1.56079633
     if is_multiple_snr:
         run_name = group_name[0]
         run_config, run = pru.load_run(run_name, constants.PROJECT, user_name, cr)
         sm = build_signal_model(run_config, None)
+        pru.download_file(run, "signal_model.pkl")
+        sm.load_model("./signal_model.pkl")
         flow, _ = build_flow_model(run_config, sm)
         flow_opt = sm.get_optimal_flow_model()
         pru.load_model_weights(run, flow, f"model_last_{None}.pth")
-
+        # theta_array_bp = torch.linspace(-np.pi / 2, np.pi / 2, 1000, device=pru.get_working_device())
+        # bp = torch.stack([torch.abs(
+        #     flow.steering_matrix(theta.reshape([1, 1])).reshape([-1, 1]).T.conj() @ flow.steering_matrix(
+        #         torch.tensor([theta_value], device=pru.get_working_device()).reshape([1, 1])).reshape([-1, 1])) / 20 for
+        #                   theta in theta_array_bp])
+        # plt.plot(theta_array_bp.cpu().numpy().flatten(), bp.cpu().numpy().flatten())
+        # index = scipy.signal.find_peaks(bp.cpu().numpy().flatten())[0]
+        # plt.plot(theta_array_bp.cpu().numpy().flatten()[index], bp.cpu().numpy().flatten()[index], "o")
+        # index_sort = np.flip(np.argsort(bp.cpu().numpy().flatten()[index]))
+        # plt.plot(theta_array_bp.cpu().numpy().flatten()[index[index_sort[1]]], bp.cpu().numpy().flatten()[index[index_sort[1]]], "x")
+        # plt.show()
+        # far_point = theta_array_bp.cpu().numpy().flatten()[index[index_sort[1]]]
         for snr in np.linspace(-30, 10, 41):
             apply_trimming = False
             adaptive_trimming = get_timming_function(apply_trimming, sm, snr)
@@ -57,6 +70,7 @@ def main():
             cond = np.max(eig_vec) / np.min(eig_vec)
 
             noise_scale = np.sqrt(sm.POWER_SOURCE / (10 ** (snr / 10))).astype("float32")
+            mle = sm.mse_mle([theta_value], in_snr=snr)
             print("Learned")
             gbarankin_ntp, gbb_learend, search_landscape_ntp, test_points_search_ntp, test_points_ntp = generative_bound.generative_barankin_bound(
                 flow, n_samples2generate,
@@ -108,6 +122,7 @@ def main():
             #     b0_gen = None
             metric_list.add_value(gbarankin=gbarankin.item(),
                                   test_points=test_points_base.flatten(),
+                                  mle=mle,
                                   # gbarankin_opt=gbarankin_opt.item() if flow_opt is not None else 0,
                                   b0=b0,
                                   b0_gen=b0_gen,

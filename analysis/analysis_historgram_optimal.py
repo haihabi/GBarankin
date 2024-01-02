@@ -28,8 +28,6 @@ def main():
             test_points = torch.tensor([[far_point]]).to(pru.get_working_device()).float().T
         else:
             test_points = torch.tensor(test_points).to(pru.get_working_device()).float().T
-        # else:
-        #     test_points = None
 
         for j_try in tqdm(range(n_trys)):
             # try:
@@ -64,8 +62,7 @@ def main():
                                   cond_ref=cond_ref.item(),
                                   index=j_try)
             metric_list.print_last()
-        # except:
-        #     print("Skip one")
+
         metric_list.save2disk(f"results_hist_{snr}.pkl")
 
 
