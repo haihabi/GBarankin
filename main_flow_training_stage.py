@@ -124,8 +124,6 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     opt = CAdam(flow.parameters(), lr=in_run_parameters.lr, weight_decay=in_run_parameters.weight_decay)
     step_in_epoch = len(training_data_loader)
 
-    # warmup_epoch = 1
-
     def lr_function(in_step):
         _epoch = in_step % step_in_epoch
         if _epoch < in_run_parameters.warmup_epoch:
@@ -136,7 +134,6 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             return (1 - in_run_parameters.min_lr / in_run_parameters.lr) * math.cos(
                 math.pi * norm_step / (2 * step_left)) + in_run_parameters.min_lr / in_run_parameters.lr
 
-    # sch = torch.optim.lr_scheduler.LambdaLR(opt, lr_function)
     n_epochs = in_run_parameters.base_epochs  # TODO:Update computation
     if not _run_parameters.is_multiple_snrs:
         if in_snr < 1:
@@ -147,9 +144,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
     target_signal_covariance_matrix = torch.diag(
         torch.diag(torch.ones(in_run_parameters.k_targets, in_run_parameters.k_targets))).to(
         pru.get_working_device()).float() + 0 * 1j
-    # target_noise_covariance_matrix = sm.power_noise * torch.diag(
-    #     torch.diag(torch.ones(in_run_parameters.m_sensors, in_run_parameters.m_sensors))).to(
-    #     pru.get_working_device()).float() + 0 * 1j
+
     target_noise_covariance_matrix = torch.tensor(sm.noise_matrix).to(pru.get_working_device())
     mmd_metric = generative_bound.FlowMMD()
     sm.save_model(wandb.run.dir)
@@ -170,8 +165,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
             loss = flow.nll_mean(x, doas=theta, noise_scale=ns)
             loss.backward()
             opt.step()
-            # sch.step()
-            # flow_ema.update(flow)
+
             ma.log(loss=loss.item())
         flow.eval()
         with torch.no_grad():
@@ -180,9 +174,7 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                 y = flow.sample(x.shape[0], doas=theta, noise_scale=ns).detach()
 
                 mmd_metric.add_samples(x, y)
-                # val_loss_ema = flow_ema.nll_mean(x, doas=theta)
                 val_loss = flow.nll_mean(x, doas=theta, noise_scale=ns)
-                # ma.log(val_loss_ema=val_loss_ema.item())
                 ma.log(val_loss=val_loss.item())
         mmd = mmd_metric.compute_mmd()
         mmd_metric.clear()
@@ -192,7 +184,6 @@ def train_model(in_run_parameters, in_run_log_folder, in_snr):
                    'ncv_re': ncv_re.item()})
 
         torch.save(flow.state_dict(), os.path.join(wandb.run.dir, f"model_last_{in_snr}.pth"))
-        # torch.save(flow_ema.state_dict(), os.path.join(wandb.run.dir, f"model_ema_{in_snr}.pth"))
 
 
 if __name__ == '__main__':

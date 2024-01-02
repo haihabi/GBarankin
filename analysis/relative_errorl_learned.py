@@ -12,7 +12,6 @@ def main():
     pru.set_seed(0)
     cr = init_config()
 
-    group_name = "vickie_turman_-30_10"  # "vickie_turman_-30_10"
     group_name = "elsie_slenker_-30_10"  # "vickie_turman_-30_10"
     user_name = "HVH"
     apply_trimming = True
@@ -65,15 +64,6 @@ def main():
                     pru.get_working_device()).reshape(
                     [1, -1]).float())
 
-            # gcrb = generative_bound.generative_cramer_rao_bound(flow_opt, n_samples2generate,
-            #                                                     parameter_name=constants.DOAS,
-            #                                                     doas=torch.tensor([theta_value]).to(
-            #                                                         pru.get_working_device()).reshape(
-            #                                                         [1, -1]).float(),
-            #                                                     noise_scale=torch.tensor([noise_scale]).to(
-            #                                                         pru.get_working_device()).reshape(
-            #                                                         [1, -1]).float()
-            #                                                     )
 
             metric_list.add_value(gbarankin=torch.trace(gbarankin).item(),
                                   re_optimal=relative_error(gbarankin.cpu().numpy(), bb_bound),
