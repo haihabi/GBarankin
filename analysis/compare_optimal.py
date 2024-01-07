@@ -1,12 +1,8 @@
-import math
-
 import numpy as np
-
 import constants
 import doatools.model as model
 import doatools.estimation as estimation
 import doatools.performance as perf
-import matplotlib.pyplot as plt
 import flows
 import torch
 import pyresearchutils as pru
@@ -32,19 +28,16 @@ n_snapshots = 10
 # We use root-MUSIC.
 estimator = estimation.RootMUSIC1D(wavelength)
 
-# snrs = np.linspace(-30, 10, 15)
-# print(np.round(snrs))
 snrs = constants.SNR_POINTS
-# print("a")
-# snrs = [-12.5]
+
 # 300 Monte Carlo runs for each SNR
 n_repeats = 300
 
 mses = np.zeros((len(snrs),))
-# crbs_sto = np.zeros((len(snrs),))
+
 barankin_stouc = np.zeros((len(snrs),))
 gbarankin_stouc = np.zeros((len(snrs),))
-# crbs_det = np.zeros((len(snrs),))
+
 crbs_stouc = np.zeros((len(snrs),))
 gcrbs_stouc = np.zeros((len(snrs),))
 far_point = -1.56079633
@@ -75,10 +68,7 @@ for i, snr in enumerate(snrs):
                                          torch.diag(torch.ones(m_sensors, m_sensors))).to(
                                          pru.get_working_device()).float() + 0 * 1j)
     doa_optimal_flow = doa_optimal_flow.to(pru.get_working_device())
-    # gcrb = generative_bound.generative_cramer_rao_bound(doa_optimal_flow, n_samples2generate,
-    #                                                     parameter_name=constants.DOAS,
-    #                                                     doas=torch.tensor(sources).to(pru.get_working_device()).reshape(
-    #                                                         [1, -1]).float())
+
     test_points = torch.tensor([[far_point]]).to(pru.get_working_device()).float().T
     generative_bound.generative_barankin_bound(doa_optimal_flow, n_samples2generate, test_points,
                                                parameter_name=constants.DOAS,
@@ -86,62 +76,3 @@ for i, snr in enumerate(snrs):
                                                    pru.get_working_device()).reshape(
                                                    [1, -1]).float())
     print(snr)
-
-#     print(gbarankin, BB_stouc)
-#     # print(gcrb, B_stouc)
-#     gbb_np = gbb.cpu().numpy()
-#
-#     one_time_one = np.ones(gbb_np.shape)
-#     eps = 1e-5
-#     cond = np.linalg.norm(gbb_np - one_time_one + np.eye(gbb_np.shape[0]) * eps) / np.linalg.norm(
-#         np.linalg.inv(gbb_np - one_time_one + np.eye(gbb_np.shape[0]) * eps))
-#     np.linalg.norm(np.linalg.inv(gbb_np - one_time_one + np.eye(gbb_np.shape[0]) * eps) - np.linalg.inv(
-#         bb_matrix - one_time_one + np.eye(gbb_np.shape[0]) * eps)) / np.linalg.norm(
-#         np.linalg.inv(bb_matrix - one_time_one + np.eye(gbb_np.shape[0]) * eps))
-#
-#     print("BB RE", np.linalg.norm(gbb.cpu().numpy() - bb_matrix) / np.linalg.norm(bb_matrix))
-#     print("GBB RE", np.linalg.norm(gbarankin.cpu().numpy() - BB_stouc) / np.linalg.norm(BB_stouc))
-#     print("GCRB RE", np.linalg.norm(gcrb.cpu().numpy() - B_stouc) / np.linalg.norm(B_stouc))
-#     gcrbs_stouc[i] = np.sqrt(torch.diag(gcrb).mean().item())
-#     gbarankin_stouc[i] = np.sqrt(torch.diag(gbarankin).mean().item())
-#     cur_mse = 0.0
-#
-#     for r in range(n_repeats):
-#         # Stochastic signal model.
-#         A = ula.steering_matrix(sources, wavelength)
-#
-#         S = source_signal.emit(n_snapshots)
-#         N = noise_signal.emit(n_snapshots)
-#         Y = A @ S + N
-#         Rs = (S @ S.conj().T) / n_snapshots
-#         Ry = (Y @ Y.conj().T) / n_snapshots
-#         resolved, estimates = estimator.estimate(Ry, sources.size, d0)
-#         # In practice, you should check if `resolved` is true.
-#         # We skip the check here.
-#         cur_mse += np.mean((estimates.locations - sources.locations) ** 2)
-#
-#     mses[i] = np.sqrt(cur_mse / n_repeats)
-#
-#     crbs_stouc[i] = np.sqrt(np.mean(np.diag(B_stouc)))
-#     barankin_stouc[i] = np.sqrt(np.mean(np.diag(BB_stouc)))
-#     print('Completed SNR = {0:.2f} dB'.format(snr))
-# plt.figure(figsize=(8, 6))
-# plt.semilogy(
-#     snrs, mses, '-x',
-#     snrs, gbarankin_stouc, '--v',
-#     snrs, gcrbs_stouc, '--v',
-#     snrs, crbs_stouc, '--',
-#     snrs, barankin_stouc, '--'
-# )
-# plt.xlabel('SNR (dB)')
-# plt.ylabel(r'RMSE / $\mathrm{rad}$')
-# plt.grid(True)
-# plt.legend(['MSE',
-#             'GBarankin',
-#             'GCRB ',
-#             'CRB ',
-#             'Barankin'])
-# plt.title('MSE vs. CRB')
-# plt.margins(x=0)
-# plt.savefig("compare_vs_snr.svg")
-# plt.show()

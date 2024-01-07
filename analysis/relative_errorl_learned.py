@@ -16,7 +16,7 @@ def main():
     user_name = "HVH"
     apply_trimming = True
     use_ref_test_points = True
-    # theta_value = np.pi / 10
+
     n_samples2generate = 64000 * 8
 
     run_name = group_name
