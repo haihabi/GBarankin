@@ -36,7 +36,14 @@ A demonstration of GBB on three cases.
 
 ## Cite
 
-Will be available soon.
+@inproceedings{habi2024learning,
+  title={Learning the Barankin lower bound on doa estimation error},
+  author={Habi, Hai Victor and Messer, Hagit and Bresler, Yoram},
+  booktitle={ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  pages={9906--9910},
+  year={2024},
+  organization={IEEE}
+}
 
 ## Contributing
 If you find a bug or have a question, please create a GitHub issue.
